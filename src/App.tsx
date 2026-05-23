@@ -9,6 +9,7 @@ import MapPage from './pages/Map';
 import Departments from './pages/Departments';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import Chatbot from './components/Chatbot';
 
 const isLoggedIn = () => !!localStorage.getItem('token');
 
@@ -16,10 +17,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Login — χωρίς Navbar */}
         <Route path="/login" element={<Login />} />
 
-        {/* Protected routes — με Navbar */}
         <Route path="/*" element={
           isLoggedIn() ? (
             <div className="min-h-screen bg-gray-100">
@@ -36,6 +35,7 @@ function App() {
                   <Route path="/settings"    element={<Settings />} />
                 </Routes>
               </div>
+              <Chatbot />
             </div>
           ) : (
             <Navigate to="/login" />
