@@ -10,6 +10,7 @@ const links = [
   { path: '/settings',    label: 'Ρυθμίσεις',   icon: '⚙' },
   { path: '/participation', label: 'Συμμετοχή', icon: '🗳' },
   { path: '/performance', label: 'Performance', icon: '🏆' },
+  { path: '/financial-reports', label: 'Οικονομικά', icon: '💰' },
 ];
 
 const Navbar: React.FC = () => {

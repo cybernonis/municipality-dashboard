@@ -15,6 +15,7 @@ import { requestNotificationPermission, onMessageListener } from './firebase';
 import Participation from './pages/Participation';
 import Performance from './pages/Performance';
 import Payments from './pages/Payments';
+import FinancialReports from './pages/FinancialReports';
 
 
 const isLoggedIn = () => !!localStorage.getItem('token');
@@ -49,6 +50,7 @@ function App() {
                   <Route path="/participation" element={<Participation />} />
                   <Route path="/performance" element={<Performance />} />
                   <Route path="/payments" element={<Payments />} />
+                  <Route path="/financial-reports" element={<FinancialReports />} />
                 </Routes>
               </div>
               <Chatbot />
