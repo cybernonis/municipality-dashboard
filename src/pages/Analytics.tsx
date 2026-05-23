@@ -6,7 +6,6 @@ import {
 import { getReports } from '../services/api';
 import { Report } from '../types';
 
-const COLORS = ['#1565C0', '#EF5350', '#66BB6A', '#FFA726', '#AB47BC', '#26C6DA'];
 
 const categoryLabels: Record<string, string> = {
   road_damage:  'Δρόμοι',
