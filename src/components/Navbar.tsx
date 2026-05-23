@@ -14,6 +14,7 @@ const links = [
   { path: '/crisis', label: 'Crisis', icon: '🆘' },
   { path: '/sla', label: 'SLA', icon: '⏰' },
   { path: '/predictive', label: 'AI Predictions', icon: '🔮' },
+  { path: '/iot', label: 'IoT', icon: '📡' },
 ];
 
 const Navbar: React.FC = () => {
