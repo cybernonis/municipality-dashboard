@@ -16,6 +16,7 @@ import Participation from './pages/Participation';
 import Performance from './pages/Performance';
 import Payments from './pages/Payments';
 import FinancialReports from './pages/FinancialReports';
+import Crisis from './pages/Crisis';
 
 
 const isLoggedIn = () => !!localStorage.getItem('token');
@@ -51,6 +52,7 @@ function App() {
                   <Route path="/performance" element={<Performance />} />
                   <Route path="/payments" element={<Payments />} />
                   <Route path="/financial-reports" element={<FinancialReports />} />
+                  <Route path="/crisis" element={<Crisis />} />
                 </Routes>
               </div>
               <Chatbot />
