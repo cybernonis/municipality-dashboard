@@ -34,8 +34,8 @@ const Chatbot: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/ai/chat`, {
-        messages: newMessages,
+      const response = await axios.post(`${API_URL}/ai/chat/admin`, {
+  messages: newMessages,
       });
 
       setMessages([...newMessages, {
