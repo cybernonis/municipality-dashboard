@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import Chatbot from './components/Chatbot';
 import { useEffect } from 'react';
 import { requestNotificationPermission, onMessageListener } from './firebase';
+import Participation from './pages/Participation';
 
 const isLoggedIn = () => !!localStorage.getItem('token');
 
@@ -42,6 +43,7 @@ function App() {
                   <Route path="/map"         element={<MapPage />} />
                   <Route path="/departments" element={<Departments />} />
                   <Route path="/settings"    element={<Settings />} />
+                  <Route path="/participation" element={<Participation />} />
                 </Routes>
               </div>
               <Chatbot />

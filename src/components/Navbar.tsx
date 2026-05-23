@@ -8,6 +8,7 @@ const links = [
   { path: '/map',         label: 'Χάρτης',      icon: '🗺' },
   { path: '/departments', label: 'Τμήματα',     icon: '🏛' },
   { path: '/settings',    label: 'Ρυθμίσεις',   icon: '⚙' },
+  { path: '/participation', label: 'Συμμετοχή', icon: '🗳' },
 ];
 
 const Navbar: React.FC = () => {
