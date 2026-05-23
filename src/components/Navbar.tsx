@@ -13,6 +13,7 @@ const links = [
   { path: '/financial-reports', label: 'Οικονομικά', icon: '💰' },
   { path: '/crisis', label: 'Crisis', icon: '🆘' },
   { path: '/sla', label: 'SLA', icon: '⏰' },
+  { path: '/predictive', label: 'AI Predictions', icon: '🔮' },
 ];
 
 const Navbar: React.FC = () => {
