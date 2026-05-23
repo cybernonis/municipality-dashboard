@@ -18,6 +18,7 @@ import Payments from './pages/Payments';
 import FinancialReports from './pages/FinancialReports';
 import Crisis from './pages/Crisis';
 import SLA from './pages/SLA';
+import Predictive from './pages/Predictive';
 
 
 const isLoggedIn = () => !!localStorage.getItem('token');
@@ -55,6 +56,7 @@ function App() {
                   <Route path="/financial-reports" element={<FinancialReports />} />
                   <Route path="/crisis" element={<Crisis />} />
                   <Route path="/sla" element={<SLA />} />
+                  <Route path="/predictive" element={<Predictive />} />
                 </Routes>
               </div>
               <Chatbot />
