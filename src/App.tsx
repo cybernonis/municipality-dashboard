@@ -10,10 +10,19 @@ import Departments from './pages/Departments';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Chatbot from './components/Chatbot';
+import { useEffect } from 'react';
+import { requestNotificationPermission, onMessageListener } from './firebase';
 
 const isLoggedIn = () => !!localStorage.getItem('token');
 
 function App() {
+  useEffect(() => {
+  requestNotificationPermission();
+  
+  onMessageListener().then((payload: any) => {
+    alert(`🔔 ${payload.notification.title}\n${payload.notification.body}`);
+  });
+}, []);
   return (
     <BrowserRouter>
       <Routes>
