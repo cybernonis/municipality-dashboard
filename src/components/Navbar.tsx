@@ -11,6 +11,7 @@ const links = [
   { path: '/participation', label: 'Συμμετοχή', icon: '🗳' },
   { path: '/performance', label: 'Performance', icon: '🏆' },
   { path: '/financial-reports', label: 'Οικονομικά', icon: '💰' },
+  { path: '/crisis', label: 'Crisis', icon: '🆘' },
 ];
 
 const Navbar: React.FC = () => {
