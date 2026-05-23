@@ -14,6 +14,8 @@ import { useEffect } from 'react';
 import { requestNotificationPermission, onMessageListener } from './firebase';
 import Participation from './pages/Participation';
 import Performance from './pages/Performance';
+import Payments from './pages/Payments';
+
 
 const isLoggedIn = () => !!localStorage.getItem('token');
 
@@ -46,6 +48,7 @@ function App() {
                   <Route path="/settings"    element={<Settings />} />
                   <Route path="/participation" element={<Participation />} />
                   <Route path="/performance" element={<Performance />} />
+                  <Route path="/payments" element={<Payments />} />
                 </Routes>
               </div>
               <Chatbot />
