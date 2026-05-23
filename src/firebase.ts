@@ -19,8 +19,8 @@ export const requestNotificationPermission = async () => {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       const token = await getToken(messaging, {
-        vapidKey: 'ΤΟ_VAPID_KEY_ΣΟΥ'  // KZK3lYi3Tu8dzbX46RbDi3gyhPd4f9wurjXr5eGyMAk
-      });
+  vapidKey: ''  // άδειο προς το παρόν
+});
       console.log('FCM Token:', token);
       return token;
     }
