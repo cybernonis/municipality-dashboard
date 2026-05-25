@@ -39,7 +39,7 @@ const AlertBanner: React.FC = () => {
   const [connected, setConnected] = useState(false);
   
   const wsRef = useRef<WebSocket | null>(null);
-const reconnectRef = useRef<NodeJS.Timeout>();
+const reconnectRef = useRef<NodeJS.Timeout | null>(null);
 
   const connect = () => {
     try {
