@@ -10,6 +10,7 @@ import Departments from './pages/Departments';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Chatbot from './components/Chatbot';
+import AlertBanner from './components/AlertBanner';
 import { useEffect } from 'react';
 import { requestNotificationPermission, onMessageListener } from './firebase';
 import Participation from './pages/Participation';
@@ -63,6 +64,7 @@ function App() {
                 </Routes>
               </div>
               <Chatbot />
+              <AlertBanner />
             </div>
           ) : (
             <Navigate to="/login" />
