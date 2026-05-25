@@ -22,6 +22,7 @@ import SLA from './pages/SLA';
 import Predictive from './pages/Predictive';
 import IoT from './pages/IoT';
 import DigitalTwin from './pages/DigitalTwin';
+import Staff from './pages/Staff';
 
 const isLoggedIn = () => !!localStorage.getItem('token');
 
@@ -61,6 +62,7 @@ function App() {
                   <Route path="/predictive" element={<Predictive />} />
                   <Route path="/iot" element={<IoT />} />
                   <Route path="/digital-twin" element={<DigitalTwin />} />
+                  <Route path="/staff" element={<Staff />} />
                 </Routes>
               </div>
               <Chatbot />
