@@ -35,11 +35,13 @@ const ALERT_COLORS: Record<string, string> = {
 };
 
 const AlertBanner: React.FC = () => {
+  console.log('AlertBanner loaded!');
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connect = () => {
+    console.log('Connecting to WebSocket:', `${WS_URL}/ws`);
     try {
       const ws = new WebSocket(`${WS_URL}/ws`);
       wsRef.current = ws;
