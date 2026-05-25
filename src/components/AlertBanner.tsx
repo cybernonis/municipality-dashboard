@@ -36,20 +36,13 @@ const ALERT_COLORS: Record<string, string> = {
 
 const AlertBanner: React.FC = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [connected, setConnected] = useState(false);
-  
   const wsRef = useRef<WebSocket | null>(null);
-const reconnectRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connect = () => {
     try {
       const ws = new WebSocket(`${WS_URL}/ws`);
       wsRef.current = ws;
-
-      ws.onopen = () => {
-        setConnected(true);
-        console.log('WebSocket connected');
-      };
 
       ws.onmessage = (event) => {
         try {
@@ -83,7 +76,6 @@ const reconnectRef = useRef<NodeJS.Timeout | null>(null);
       };
 
       ws.onclose = () => {
-        setConnected(false);
         reconnectRef.current = setTimeout(connect, 5000);
       };
 
@@ -98,7 +90,7 @@ const reconnectRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     connect();
     return () => {
-      clearTimeout(reconnectRef.current);
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
       wsRef.current?.close();
     };
   }, []);
@@ -114,7 +106,7 @@ const reconnectRef = useRef<NodeJS.Timeout | null>(null);
       {alerts.map(alert => (
         <div
           key={alert.id}
-          className={`${ALERT_COLORS[alert.type] || 'bg-gray-700'} text-white rounded-xl shadow-lg p-4 flex items-start gap-3 animate-pulse-once`}
+          className={`${ALERT_COLORS[alert.type] || 'bg-gray-700'} text-white rounded-xl shadow-lg p-4 flex items-start gap-3`}
         >
           <span className="text-2xl flex-shrink-0">
             {ALERT_ICONS[alert.type] || '⚠️'}
