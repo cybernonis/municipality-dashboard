@@ -8,8 +8,7 @@ import DeckGL from '@deck.gl/react';
 import { ColumnLayer, ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer as DeckHeatmap } from '@deck.gl/aggregation-layers';
 import { MapViewState } from '@deck.gl/core';
-import Map from 'react-map-gl/maplibre';
-import 'maplibre-gl/dist/maplibre-gl.css';
+
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 const HERAKLION_CENTER: [number, number] = [35.3387, 25.1442];
@@ -484,14 +483,13 @@ const DigitalTwin: React.FC = () => {
                 ))}
               </MapContainer>
             ) : (
-              <DeckGL
-                viewState={viewState3D}
-                onViewStateChange={({ viewState: vs }: any) => setViewState3D(vs)}
-                controller={true}
-                layers={deck3DLayers as any}
-              >
-                <Map mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" />
-              </DeckGL>
+                 <DeckGL
+                  viewState={viewState3D}
+                  onViewStateChange={({ viewState: vs }: any) => setViewState3D(vs)}
+                  controller={true}
+                  layers={deck3DLayers as any}
+                  style={{ background: '#1a1a2e' }}
+                 />
             )}
 
             {/* 3D Tooltip */}
