@@ -143,7 +143,7 @@ const DigitalTwin: React.FC = () => {
   const startRotate = () => {
     setRotating(true);
     rotateRef.current = setInterval(() => {
-      setViewState3D(prev => ({ ...prev, bearing: (prev.bearing + 0.5) % 360 }));
+      setViewState3D(prev => ({ ...prev, bearing: ((prev.bearing ?? 0) + 0.5) % 360 }));
     }, 50);
   };
 
