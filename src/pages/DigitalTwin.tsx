@@ -30,7 +30,6 @@ const deviceLabels: Record<string, string> = {
   water_pressure: 'Νερο', traffic: 'Κινηση',
 };
 
-// Custom icons
 const createIcon = (color: string, emoji: string) => L.divIcon({
   html: `<div style="background:${color};width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">${emoji}</div>`,
   className: '',
@@ -43,7 +42,6 @@ const fireIcon = createIcon('#FF3D00', '🔥');
 const earthquakeIcon = (mag: number) => createIcon(mag >= 4 ? '#FF6F00' : '#FDD835', '🌍');
 const trafficIcon = createIcon('#607D8B', '🚗');
 
-// Heatmap Layer
 const HeatmapLayer: React.FC<{ points: any[] }> = ({ points }) => {
   const map = useMap();
   useEffect(() => {
@@ -80,7 +78,43 @@ const DigitalTwin: React.FC = () => {
     type: 'flood', description: 'Πλημμύρα στο κέντρο', location: 'Κέντρο Ηρακλείου',
   });
 
+  // Time-lapse state
+  const [timelapse, setTimelapse] = useState(false);
+  const [tlDay, setTlDay] = useState(0);
+  const [tlPlaying, setTlPlaying] = useState(false);
+  const tlRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const tlDays = 7;
+
   const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+
+  // Time-lapse logic
+  const tlReports = layers?.reports.filter(r => {
+    if (!timelapse || !r.created_at) return !timelapse;
+    const created = new Date(r.created_at);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays >= (tlDays - 1 - tlDay);
+  }) || [];
+
+  const startTimelapse = () => {
+    setTlPlaying(true);
+    setTlDay(0);
+    tlRef.current = setInterval(() => {
+      setTlDay(prev => {
+        if (prev >= tlDays - 1) {
+          clearInterval(tlRef.current!);
+          setTlPlaying(false);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 800);
+  };
+
+  const stopTimelapse = () => {
+    if (tlRef.current) clearInterval(tlRef.current);
+    setTlPlaying(false);
+  };
 
   useEffect(() => {
     loadData();
@@ -96,7 +130,8 @@ const DigitalTwin: React.FC = () => {
             ...prev,
             reports: [...prev.reports, {
               id: data.data.id, lat: data.data.latitude, lng: data.data.longitude,
-              category: data.data.category, severity: data.data.severity, status: data.data.status,
+              category: data.data.category, severity: data.data.severity,
+              status: data.data.status, created_at: new Date().toISOString(),
             }]
           } : prev);
           setLiveUpdates(prev => [`📋 Νέα αναφορά: ${data.data.category}`, ...prev.slice(0, 4)]);
@@ -112,7 +147,11 @@ const DigitalTwin: React.FC = () => {
     };
 
     connectWS();
-    return () => { clearInterval(interval); wsRef.current?.close(); };
+    return () => {
+      clearInterval(interval);
+      wsRef.current?.close();
+      if (tlRef.current) clearInterval(tlRef.current);
+    };
   }, []);
 
   const loadData = async () => {
@@ -165,20 +204,15 @@ const DigitalTwin: React.FC = () => {
     return colors[type] || '#78909C';
   };
 
-  const getTrafficColor = (severity: string) => {
-    if (severity === 'critical' || severity === 'major') return '#EF5350';
-    if (severity === 'moderate') return '#FFA726';
-    return '#66BB6A';
-  };
-
   const smartAlerts: string[] = [];
   if (externalData?.weather?.alerts) externalData.weather.alerts.forEach((a: any) => smartAlerts.push(a.message));
   if (externalData?.hazards?.auto_crisis) smartAlerts.push(`🔥 Ενεργή πυρκαγιά εντός 50km — ${externalData.hazards.nearby_fires?.length} εστίες!`);
   if (externalData?.earthquakes?.significant?.length > 0) externalData.earthquakes.significant.forEach((eq: any) => smartAlerts.push(`🌍 Σεισμός ${eq.magnitude}R — ${eq.place} (${eq.distance_km}km)`));
   if (externalData?.air_quality?.aqi > 100) smartAlerts.push(`💨 Κακή ποιότητα αέρα — AQI ${externalData.air_quality.aqi}`);
 
-  // Report markers JSX
-  const reportMarkers = layers?.reports.map(report => (
+  const activeReports = timelapse ? tlReports : (layers?.reports || []);
+
+  const reportMarkers = activeReports.map(report => (
     <CircleMarker key={report.id} center={[report.lat, report.lng]}
       radius={report.severity === 'high' ? 12 : 8}
       fillColor={getReportColor(report.severity)} color={getReportColor(report.severity)}
@@ -211,7 +245,6 @@ const DigitalTwin: React.FC = () => {
         </div>
       </div>
 
-      {/* Smart Alerts */}
       {smartAlerts.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
           <p className="text-xs font-bold text-red-800 mb-2">⚠️ Smart Alerts ({smartAlerts.length})</p>
@@ -219,7 +252,6 @@ const DigitalTwin: React.FC = () => {
         </div>
       )}
 
-      {/* Live Updates */}
       {liveUpdates.length > 0 && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
           <p className="text-xs font-bold text-green-800 mb-1">🔴 Live Updates</p>
@@ -227,7 +259,6 @@ const DigitalTwin: React.FC = () => {
         </div>
       )}
 
-      {/* KPIs */}
       {summary && (
         <div className="grid grid-cols-5 gap-3 mb-6">
           {[
@@ -285,22 +316,26 @@ const DigitalTwin: React.FC = () => {
             </div>
           </div>
 
+          {/* Time-lapse indicator on map */}
+          {timelapse && (
+            <div className="bg-blue-600 text-white rounded-lg p-3 mb-2 flex items-center justify-between">
+              <span className="text-sm font-bold">⏱️ Time-lapse — Ημέρα {tlDay + 1}/{tlDays}</span>
+              <span className="text-sm">{activeReports.length} αναφορές</span>
+            </div>
+          )}
+
           <div className="rounded-lg overflow-hidden shadow" style={{ height: '520px' }}>
             <MapContainer center={HERAKLION_CENTER} zoom={14} style={{ height: '100%', width: '100%' }}>
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="OpenStreetMap contributors" />
 
               {showHeatmap && <HeatmapLayer points={heatmapPoints} />}
 
-              {/* Reports — με ή χωρίς clustering */}
               {activeLayer.reports && (
                 useClustering ? (
-                  <MarkerClusterGroup chunkedLoading>
-                    {reportMarkers}
-                  </MarkerClusterGroup>
+                  <MarkerClusterGroup chunkedLoading>{reportMarkers}</MarkerClusterGroup>
                 ) : reportMarkers
               )}
 
-              {/* IoT */}
               {activeLayer.iot && layers?.iot_devices.map(device => (
                 <CircleMarker key={device.id} center={[device.lat, device.lng]}
                   radius={8} fillColor={getDeviceColor(device.device_type)}
@@ -313,51 +348,37 @@ const DigitalTwin: React.FC = () => {
                 </CircleMarker>
               ))}
 
-              {/* Crises */}
               {activeLayer.crises && layers?.crises.map(crisis => (
                 <Marker key={crisis.id} position={[crisis.lat, crisis.lng]} icon={crisisIcon}>
-                  <Popup>
-                    <p className="font-bold">🆘 Κρίση: {crisis.crisis_type}</p>
-                    <p>Σοβαρότητα: {crisis.severity}</p>
-                  </Popup>
+                  <Popup><p className="font-bold">🆘 Κρίση: {crisis.crisis_type}</p><p>Σοβαρότητα: {crisis.severity}</p></Popup>
                   <Tooltip>Κρίση: {crisis.crisis_type}</Tooltip>
                 </Marker>
               ))}
 
-              {/* Earthquakes */}
               {showEarthquakes && externalData?.earthquakes?.earthquakes?.map((eq: any, i: number) => (
                 <Marker key={`eq-${i}`} position={[eq.lat, eq.lng]} icon={earthquakeIcon(eq.magnitude)}>
                   <Popup>
                     <p className="font-bold">🌍 Σεισμός {eq.magnitude}R</p>
-                    <p>Βάθος: {eq.depth_km} km</p>
-                    <p>Απόσταση: {eq.distance_km} km</p>
+                    <p>Βάθος: {eq.depth_km} km | Απόσταση: {eq.distance_km} km</p>
                     <p>{eq.place}</p>
-                    <p className="text-xs text-gray-400">{new Date(eq.time).toLocaleString('el-GR')}</p>
                   </Popup>
                   <Tooltip>Σεισμός {eq.magnitude}R — {eq.distance_km}km</Tooltip>
                 </Marker>
               ))}
 
-              {/* Fires */}
               {showFires && externalData?.hazards?.fires?.map((fire: any, i: number) => (
                 <Marker key={`fire-${i}`} position={[fire.lat, fire.lng]} icon={fireIcon}>
                   <Popup>
                     <p className="font-bold">🔥 Πυρκαγιά</p>
-                    <p>Confidence: {fire.confidence}%</p>
-                    <p>Απόσταση: {fire.distance_km} km</p>
+                    <p>Confidence: {fire.confidence}% | Απόσταση: {fire.distance_km} km</p>
                   </Popup>
                   <Tooltip>Πυρκαγιά — {fire.distance_km}km</Tooltip>
                 </Marker>
               ))}
 
-              {/* Traffic */}
               {showTraffic && externalData?.traffic?.incidents?.map((inc: any, i: number) => (
                 <Marker key={`traffic-${i}`} position={[inc.lat, inc.lng]} icon={trafficIcon}>
-                  <Popup>
-                    <p className="font-bold">🚗 {inc.type}</p>
-                    <p>{inc.location}</p>
-                    <p>Σοβαρότητα: {inc.severity}</p>
-                  </Popup>
+                  <Popup><p className="font-bold">🚗 {inc.type}</p><p>{inc.location}</p></Popup>
                   <Tooltip>Κυκλοφορία: {inc.type}</Tooltip>
                 </Marker>
               ))}
@@ -368,7 +389,7 @@ const DigitalTwin: React.FC = () => {
         {/* Right Sidebar */}
         <div className="space-y-4">
 
-          {/* Weather Widget */}
+          {/* Weather */}
           {externalData?.weather && (
             <div className="bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-lg shadow p-4">
               <h3 className="font-bold mb-3">⛅ Καιρός Ηρακλείου</h3>
@@ -380,14 +401,6 @@ const DigitalTwin: React.FC = () => {
                   <p className="text-xs opacity-75">💧 {externalData.weather.humidity}% | 💨 {externalData.weather.wind_kmh} km/h</p>
                 </div>
               </div>
-              {externalData.weather.rain_probability > 0 && (
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="flex-1 bg-blue-400 rounded-full h-2">
-                    <div className="bg-white h-2 rounded-full" style={{ width: `${externalData.weather.rain_probability * 100}%` }} />
-                  </div>
-                  <span className="text-xs">{Math.round(externalData.weather.rain_probability * 100)}% βροχή</span>
-                </div>
-              )}
               {externalData.weather.alerts?.map((alert: any, i: number) => (
                 <div key={i} className="bg-yellow-400 text-yellow-900 rounded p-2 mt-1 text-xs font-medium">⚠️ {alert.message}</div>
               ))}
@@ -398,7 +411,7 @@ const DigitalTwin: React.FC = () => {
           {externalData?.air_quality && (
             <div className="bg-white rounded-lg shadow p-4">
               <h3 className="font-bold text-gray-800 mb-3">💨 Ποιότητα Αέρα</h3>
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg"
                   style={{ backgroundColor: externalData.air_quality.color }}>
                   {externalData.air_quality.aqi}
@@ -409,11 +422,6 @@ const DigitalTwin: React.FC = () => {
                   <p className="text-xs text-gray-400">PM10: {externalData.air_quality.pm10} μg/m³</p>
                 </div>
               </div>
-              {externalData.air_quality.aqi > 100 && (
-                <div className="bg-red-50 border border-red-200 rounded p-2">
-                  <p className="text-xs text-red-700">⚠️ Αποφύγετε παρατεταμένη έκθεση!</p>
-                </div>
-              )}
             </div>
           )}
 
@@ -432,7 +440,7 @@ const DigitalTwin: React.FC = () => {
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {externalData.earthquakes.earthquakes?.slice(0, 5).map((eq: any, i: number) => (
                   <div key={i} className="flex justify-between items-center text-xs py-1 border-b">
-                    <span className={`font-bold ${eq.magnitude >= 4 ? 'text-red-600' : eq.magnitude >= 3 ? 'text-orange-500' : 'text-gray-600'}`}>{eq.magnitude}R</span>
+                    <span className={`font-bold ${eq.magnitude >= 4 ? 'text-red-600' : 'text-gray-600'}`}>{eq.magnitude}R</span>
                     <span className="text-gray-500 truncate max-w-20">{eq.place?.split(',')[0]}</span>
                     <span className="text-gray-400">{eq.distance_km}km</span>
                   </div>
@@ -445,7 +453,7 @@ const DigitalTwin: React.FC = () => {
           {externalData?.traffic && (
             <div className="bg-white rounded-lg shadow p-4">
               <h3 className="font-bold text-gray-800 mb-3">🚗 Κυκλοφορία</h3>
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
                   externalData.traffic.congestion_level === 'high' ? 'bg-red-500' :
                   externalData.traffic.congestion_level === 'moderate' ? 'bg-orange-400' : 'bg-green-500'}`}>
@@ -466,14 +474,52 @@ const DigitalTwin: React.FC = () => {
           {externalData?.hazards?.fires?.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <h3 className="font-bold text-red-800 mb-2">🔥 Ενεργές Πυρκαγιές</h3>
-              <p className="text-sm text-red-700 mb-2">{externalData.hazards.fires.length} εστίες στην Κρήτη</p>
+              <p className="text-sm text-red-700">{externalData.hazards.fires.length} εστίες στην Κρήτη</p>
               {externalData.hazards.nearby_fires?.length > 0 && (
-                <div className="bg-red-100 rounded p-2">
+                <div className="bg-red-100 rounded p-2 mt-2">
                   <p className="text-xs font-bold text-red-800">🚨 {externalData.hazards.nearby_fires.length} εντός 50km!</p>
                 </div>
               )}
             </div>
           )}
+
+          {/* Time-lapse Panel */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-800">⏱️ Time-lapse</h3>
+              <button
+                onClick={() => { setTimelapse(!timelapse); stopTimelapse(); setTlDay(0); }}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${timelapse ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                {timelapse ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            {timelapse && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>7 μέρες πριν</span>
+                  <span className="font-bold text-blue-600">Ημέρα {tlDay + 1}/{tlDays}</span>
+                  <span>Σήμερα</span>
+                </div>
+                <input type="range" min={0} max={tlDays - 1} value={tlDay}
+                  onChange={e => { stopTimelapse(); setTlDay(Number(e.target.value)); }}
+                  className="w-full accent-blue-600" />
+                <div className="flex gap-2">
+                  <button onClick={tlPlaying ? stopTimelapse : startTimelapse}
+                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700">
+                    {tlPlaying ? '⏸ Pause' : '▶ Play'}
+                  </button>
+                  <button onClick={() => { stopTimelapse(); setTlDay(0); }}
+                    className="px-3 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                    ↺
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 text-center">{activeReports.length} αναφορές εμφανίζονται</p>
+              </div>
+            )}
+            {!timelapse && (
+              <p className="text-xs text-gray-400">Ενεργοποίησε για να δεις την εξέλιξη αναφορών τις τελευταίες 7 μέρες</p>
+            )}
+          </div>
 
           {/* Simulation Panel */}
           <div className="bg-white rounded-lg shadow p-4">
