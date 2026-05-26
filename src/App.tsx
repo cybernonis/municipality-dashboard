@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
 import ReportDetail from './pages/ReportDetail';
@@ -12,7 +12,7 @@ import Login from './pages/Login';
 import Chatbot from './components/Chatbot';
 import AlertBanner from './components/AlertBanner';
 import Staff from './pages/Staff';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { requestNotificationPermission, onMessageListener } from './firebase';
 import axios from 'axios';
 import Participation from './pages/Participation';
@@ -28,6 +28,23 @@ import DigitalTwin from './pages/DigitalTwin';
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 const isLoggedIn = () => !!localStorage.getItem('token');
 
+const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  return (
+    <div className="min-h-screen flex" style={{ background: '#F0F4F8' }}>
+      <Sidebar />
+      <main
+        className="flex-1 transition-all duration-300 overflow-auto"
+        style={{ marginLeft: sidebarCollapsed ? '64px' : '240px' }}>
+        <div className="max-w-7xl mx-auto">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+};
+
 function App() {
   useEffect(() => {
     const initNotifications = async () => {
@@ -36,10 +53,7 @@ function App() {
         if (token) {
           const userId = localStorage.getItem('user_id');
           if (userId) {
-            await axios.post(`${API_URL}/auth/fcm-token`, {
-              user_id: userId,
-              fcm_token: token,
-            });
+            await axios.post(`${API_URL}/auth/fcm-token`, { user_id: userId, fcm_token: token });
             console.log('FCM token saved to backend');
           }
         }
@@ -47,9 +61,7 @@ function App() {
         console.error('FCM init error:', e);
       }
     };
-
     initNotifications();
-
     onMessageListener().then((payload: any) => {
       alert(`🔔 ${payload.notification.title}\n${payload.notification.body}`);
     });
@@ -59,36 +71,32 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-
         <Route path="/*" element={
           isLoggedIn() ? (
-            <div className="min-h-screen bg-gray-100">
-              <Navbar />
-              <div className="max-w-7xl mx-auto">
-                <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" />} />
-                  <Route path="/dashboard"        element={<Dashboard />} />
-                  <Route path="/reports"          element={<Reports />} />
-                  <Route path="/reports/:id"      element={<ReportDetail />} />
-                  <Route path="/analytics"        element={<Analytics />} />
-                  <Route path="/map"              element={<MapPage />} />
-                  <Route path="/departments"      element={<Departments />} />
-                  <Route path="/settings"         element={<Settings />} />
-                  <Route path="/participation"    element={<Participation />} />
-                  <Route path="/performance"      element={<Performance />} />
-                  <Route path="/payments"         element={<Payments />} />
-                  <Route path="/financial-reports" element={<FinancialReports />} />
-                  <Route path="/crisis"           element={<Crisis />} />
-                  <Route path="/sla"              element={<SLA />} />
-                  <Route path="/predictive"       element={<Predictive />} />
-                  <Route path="/iot"              element={<IoT />} />
-                  <Route path="/digital-twin"     element={<DigitalTwin />} />
-                  <Route path="/staff"            element={<Staff />} />
-                </Routes>
-              </div>
+            <AppLayout>
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" />} />
+                <Route path="/dashboard"         element={<Dashboard />} />
+                <Route path="/reports"           element={<Reports />} />
+                <Route path="/reports/:id"       element={<ReportDetail />} />
+                <Route path="/analytics"         element={<Analytics />} />
+                <Route path="/map"               element={<MapPage />} />
+                <Route path="/departments"       element={<Departments />} />
+                <Route path="/settings"          element={<Settings />} />
+                <Route path="/participation"     element={<Participation />} />
+                <Route path="/performance"       element={<Performance />} />
+                <Route path="/payments"          element={<Payments />} />
+                <Route path="/financial-reports" element={<FinancialReports />} />
+                <Route path="/crisis"            element={<Crisis />} />
+                <Route path="/sla"               element={<SLA />} />
+                <Route path="/predictive"        element={<Predictive />} />
+                <Route path="/iot"               element={<IoT />} />
+                <Route path="/digital-twin"      element={<DigitalTwin />} />
+                <Route path="/staff"             element={<Staff />} />
+              </Routes>
               <Chatbot />
               <AlertBanner />
-            </div>
+            </AppLayout>
           ) : (
             <Navigate to="/login" />
           )
