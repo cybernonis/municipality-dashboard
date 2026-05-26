@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip } from 'react-leaflet';
+import TabBar from '../components/TabBar';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
@@ -146,17 +147,16 @@ const Predictive: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
-        <button onClick={() => setActiveTab('analysis')}
-          className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'analysis' ? 'bg-purple-600 text-white shadow' : 'bg-white text-gray-600 border hover:bg-gray-50'}`}>
-          🤖 AI Ανάλυση
-        </button>
-        <button onClick={() => setActiveTab('heatmap')}
-          className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'heatmap' ? 'bg-purple-600 text-white shadow' : 'bg-white text-gray-600 border hover:bg-gray-50'}`}>
-          🗺️ Predictive Heatmap
-        </button>
+      <div className="mb-6">
+        <TabBar
+          variant="pills"
+          active={activeTab}
+          onChange={(key) => setActiveTab(key as 'analysis' | 'heatmap')}
+          tabs={[
+            { key: 'analysis', label: 'AI Ανάλυση',         icon: 'ti-robot' },
+            { key: 'heatmap',  label: 'Predictive Heatmap',  icon: 'ti-map-pin' },
+          ]}
+        />
       </div>
 
       {/* ─── TAB: AI ANALYSIS ─── */}
