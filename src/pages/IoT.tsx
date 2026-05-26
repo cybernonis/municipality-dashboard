@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import {
+  Wifi, Play, AlertTriangle, Battery, MapPin, Calendar,
+  Thermometer, Activity, Trash2, Lightbulb, Droplets, Car, X,
+} from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
@@ -31,30 +35,22 @@ interface Stats {
   by_type: Record<string, number>;
 }
 
-const deviceIcons: Record<string, string> = {
-  waste_bin:      '🗑️',
-  street_light:   '💡',
-  environment:    '🌡️',
-  water_pressure: '💧',
-  traffic:        '🚗',
-};
-
-const deviceLabels: Record<string, string> = {
-  waste_bin:      'Κάδος Σκουπιδιών',
-  street_light:   'Φωτισμός',
-  environment:    'Περιβάλλον',
-  water_pressure: 'Πίεση Νερού',
-  traffic:        'Κυκλοφορία',
+const deviceConfig: Record<string, { label: string; Icon: React.ElementType; cls: string }> = {
+  waste_bin:      { label: 'Κάδος',       Icon: Trash2,       cls: 'bg-amber-100 text-amber-700' },
+  street_light:   { label: 'Φωτισμός',   Icon: Lightbulb,    cls: 'bg-yellow-100 text-yellow-700' },
+  environment:    { label: 'Περιβάλλον', Icon: Thermometer,   cls: 'bg-teal-100 text-teal-700' },
+  water_pressure: { label: 'Νερό',       Icon: Droplets,      cls: 'bg-blue-100 text-blue-700' },
+  traffic:        { label: 'Κίνηση',     Icon: Car,           cls: 'bg-purple-100 text-purple-700' },
 };
 
 const metricLabels: Record<string, string> = {
-  fill_level:         'Πλήρωση',
-  consumption_watts:  'Κατανάλωση',
-  temperature:        'Θερμοκρασία',
-  air_quality_aqi:    'Ποιότητα Αέρα',
-  noise_db:           'Θόρυβος',
-  pressure_bar:       'Πίεση Νερού',
-  congestion_level:   'Κυκλοφορία',
+  fill_level:        'Πλήρωση',
+  consumption_watts: 'Κατανάλωση',
+  temperature:       'Θερμοκρασία',
+  air_quality_aqi:   'Ποιότητα Αέρα',
+  noise_db:          'Θόρυβος',
+  pressure_bar:      'Πίεση Νερού',
+  congestion_level:  'Κυκλοφορία',
 };
 
 const IoT: React.FC = () => {
@@ -88,176 +84,212 @@ const IoT: React.FC = () => {
     setSimulating(true);
     try {
       const res = await axios.post(`${API_URL}/iot/simulate`);
-      const newAlerts = res.data.alerts.map((a: any) => `${a.device}: ${a.message}`);
-      setAlerts(newAlerts);
+      setAlerts(res.data.alerts.map((a: any) => `${a.device}: ${a.message}`));
       await loadData();
     } finally {
-      setSimulating(false);
-    }
+      setSimulating(false); }
   };
 
-  const filtered = filter === 'all'
-    ? devices
-    : devices.filter(d => d.type === filter);
+  const filtered = filter === 'all' ? devices : devices.filter(d => d.type === filter);
 
-  const getBatteryColor = (level: number) => {
-    if (level >= 60) return 'text-green-600';
-    if (level >= 30) return 'text-yellow-600';
-    return 'text-red-600';
+  const getBatteryInfo = (level: number) => {
+    if (level >= 60) return { cls: 'text-emerald-600', bg: 'bg-emerald-500' };
+    if (level >= 30) return { cls: 'text-amber-600',   bg: 'bg-amber-500' };
+    return                  { cls: 'text-red-600',      bg: 'bg-red-500' };
   };
 
-  const hasAlert = (device: Device) =>
-    device.latest_readings.some(r => r.alert);
+  const hasAlert = (d: Device) => d.latest_readings.some(r => r.alert);
+
+  const summaryCards = [
+    { label: 'Συσκευές',    value: stats?.total_devices  ?? 0, cls: 'border-[#2E86AB] text-[#2E86AB]' },
+    { label: 'Ενεργές',     value: stats?.active_devices ?? 0, cls: 'border-[#2D936C] text-[#2D936C]' },
+    { label: 'Alerts',      value: stats?.total_alerts   ?? 0, cls: 'border-[#E63946] text-[#E63946]' },
+    { label: '🗑️ Κάδοι',    value: stats?.by_type.waste_bin    ?? 0, cls: 'border-amber-500 text-amber-600' },
+    { label: '💡 Φανάρια',  value: stats?.by_type.street_light ?? 0, cls: 'border-yellow-500 text-yellow-600' },
+  ];
 
   return (
-    <div className="p-6">
+    <div className="p-6 bg-[#F0F4F8] min-h-screen">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">📡 IoT Dashboard</h2>
-          <p className="text-sm text-gray-500 mt-1">Smart City Sensors — Ηράκλειο</p>
+          <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
+            <Wifi className="w-7 h-7 text-[#2E86AB]" />
+            IoT Dashboard
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">Smart City Sensors — Ηράκλειο · ανανέωση /30s</p>
         </div>
         <button
           onClick={runSimulation}
           disabled={simulating}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium"
+          className="flex items-center gap-2 px-4 py-2 bg-[#2D936C] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
-          {simulating ? '⏳ Simulation...' : '▶️ Run Simulation'}
+          <Play className={`w-4 h-4 ${simulating ? 'animate-pulse' : ''}`} />
+          {simulating ? 'Simulation...' : 'Run Simulation'}
         </button>
       </div>
 
-      {/* Alerts */}
+      {/* Alerts Banner */}
       {alerts.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <h3 className="font-bold text-red-800 mb-2">🚨 Νέα Alerts ({alerts.length})</h3>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-red-800 flex items-center gap-2 text-sm">
+              <AlertTriangle className="w-4 h-4" />
+              Νέα Alerts ({alerts.length})
+            </h3>
+            <button onClick={() => setAlerts([])} className="text-red-400 hover:text-red-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
           <div className="space-y-1">
             {alerts.map((alert, i) => (
-              <p key={i} className="text-red-700 text-sm">• {alert}</p>
+              <p key={i} className="text-red-700 text-xs">• {alert}</p>
             ))}
           </div>
-          <button
-            onClick={() => setAlerts([])}
-            className="text-red-500 text-xs mt-2 hover:underline"
-          >
-            Κλείσιμο
-          </button>
         </div>
       )}
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-blue-500">
-            <p className="text-3xl font-bold text-blue-600">{stats.total_devices}</p>
-            <p className="text-xs text-gray-500">Συσκευές</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-green-500">
-            <p className="text-3xl font-bold text-green-600">{stats.active_devices}</p>
-            <p className="text-xs text-gray-500">Ενεργές</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-red-500">
-            <p className="text-3xl font-bold text-red-600">{stats.total_alerts}</p>
-            <p className="text-xs text-gray-500">Alerts</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-yellow-500">
-            <p className="text-3xl font-bold text-yellow-600">{stats.by_type.waste_bin || 0}</p>
-            <p className="text-xs text-gray-500">🗑️ Κάδοι</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-purple-500">
-            <p className="text-3xl font-bold text-purple-600">{stats.by_type.street_light || 0}</p>
-            <p className="text-xs text-gray-500">💡 Φανάρια</p>
-          </div>
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-6">
+          {summaryCards.map((c, i) => (
+            <div key={i} className={`bg-white rounded-xl shadow-sm border-t-4 ${c.cls.split(' ')[0]} p-4 text-center`}>
+              <p className={`text-2xl font-bold ${c.cls.split(' ')[1]}`}>{c.value}</p>
+              <p className="text-xs text-gray-500 mt-1">{c.label}</p>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Filter */}
+      {/* Filter Tabs */}
       <div className="flex gap-2 mb-4 flex-wrap">
         {[
-          { value: 'all',           label: 'Όλες' },
-          { value: 'waste_bin',     label: '🗑️ Κάδοι' },
-          { value: 'street_light',  label: '💡 Φωτισμός' },
-          { value: 'environment',   label: '🌡️ Περιβάλλον' },
-          { value: 'water_pressure',label: '💧 Νερό' },
-          { value: 'traffic',       label: '🚗 Κίνηση' },
+          { value: 'all',            label: 'Όλες' },
+          { value: 'waste_bin',      label: 'Κάδοι' },
+          { value: 'street_light',   label: 'Φωτισμός' },
+          { value: 'environment',    label: 'Περιβάλλον' },
+          { value: 'water_pressure', label: 'Νερό' },
+          { value: 'traffic',        label: 'Κίνηση' },
         ].map(f => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          <button key={f.value} onClick={() => setFilter(f.value)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors border ${
               filter === f.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100'
-            }`}
-          >
+                ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-[#2E86AB] hover:text-[#2E86AB]'
+            }`}>
             {f.label}
           </button>
         ))}
       </div>
 
-      {/* Devices Grid */}
+      {/* Table */}
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Φόρτωση...</div>
+        <div className="text-center py-16 text-gray-400">
+          <Wifi className="w-10 h-10 mx-auto mb-3 opacity-30 animate-pulse" />
+          <p>Φόρτωση συσκευών...</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <Wifi className="w-10 h-10 mx-auto mb-3 opacity-30" />
+          <p>Δεν υπάρχουν συσκευές για αυτό το φίλτρο</p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(device => (
-            <div
-              key={device.id}
-              className={`bg-white rounded-lg shadow p-4 border-l-4 ${
-                hasAlert(device) ? 'border-l-red-500' : 'border-l-green-500'
-              }`}
-            >
-              {/* Device Header */}
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{deviceIcons[device.type] || '📡'}</span>
-                  <div>
-                    <p className="font-bold text-gray-800 text-sm">{device.name}</p>
-                    <p className="text-xs text-gray-500">{device.location}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className={`text-xs font-bold ${getBatteryColor(device.battery_level)}`}>
-                    🔋 {device.battery_level}%
-                  </p>
-                  {hasAlert(device) && (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                      ⚠️ Alert
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Readings */}
-              <div className="space-y-2">
-                {device.latest_readings.map((reading, i) => (
-                  <div
-                    key={i}
-                    className={`flex justify-between items-center p-2 rounded text-sm ${
-                      reading.alert ? 'bg-red-50' : 'bg-gray-50'
-                    }`}
-                  >
-                    <span className="text-gray-600">
-                      {metricLabels[reading.metric] || reading.metric}
-                    </span>
-                    <span className={`font-bold ${reading.alert ? 'text-red-600' : 'text-gray-800'}`}>
-                      {reading.value} {reading.unit}
-                      {reading.alert && ' ⚠️'}
-                    </span>
-                  </div>
-                ))}
-                {device.latest_readings.length === 0 && (
-                  <p className="text-xs text-gray-400 text-center py-2">
-                    Δεν υπάρχουν μετρήσεις — τρέξε Simulation
-                  </p>
-                )}
-              </div>
-
-              {/* Last seen */}
-              <p className="text-xs text-gray-400 mt-3">
-                Τελευταία ενημέρωση: {new Date(device.last_seen).toLocaleString('el-GR')}
-              </p>
-            </div>
-          ))}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#1E3A5F] text-white text-xs uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left font-semibold">Συσκευή</th>
+                  <th className="px-4 py-3 text-left font-semibold">Τύπος</th>
+                  <th className="px-4 py-3 text-left font-semibold">Τοποθεσία</th>
+                  <th className="px-4 py-3 text-left font-semibold w-32">Μπαταρία</th>
+                  <th className="px-4 py-3 text-left font-semibold">Τελευταία Μέτρηση</th>
+                  <th className="px-4 py-3 text-center font-semibold">Alert</th>
+                  <th className="px-4 py-3 text-left font-semibold">Τελευταία Ενημέρωση</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map(device => {
+                  const cfg = deviceConfig[device.type] || { label: device.type, Icon: Wifi, cls: 'bg-gray-100 text-gray-600' };
+                  const Icon = cfg.Icon;
+                  const bat = getBatteryInfo(device.battery_level);
+                  const alertReading = device.latest_readings.find(r => r.alert);
+                  const mainReading = alertReading || device.latest_readings[0];
+                  const deviceHasAlert = hasAlert(device);
+                  return (
+                    <tr key={device.id}
+                      className={`hover:bg-blue-50 transition-colors ${deviceHasAlert ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-[#1E3A5F] text-sm">{device.name}</div>
+                        <div className="text-xs text-gray-400 font-mono mt-0.5">{device.id.slice(0, 8)}…</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${cfg.cls}`}>
+                          <Icon className="w-3 h-3" />
+                          {cfg.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 text-gray-600 text-xs">
+                          <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                          <span className="truncate max-w-[120px]">{device.location}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 w-32">
+                        <div className="flex items-center gap-2">
+                          <Battery className={`w-4 h-4 flex-shrink-0 ${bat.cls}`} />
+                          <div className="flex-1">
+                            <div className="flex justify-between text-xs mb-0.5">
+                              <span className={`font-medium ${bat.cls}`}>{device.battery_level}%</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-1.5">
+                              <div className={`h-1.5 rounded-full ${bat.bg}`}
+                                style={{ width: `${device.battery_level}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {mainReading ? (
+                          <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
+                            mainReading.alert ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-700'
+                          }`}>
+                            <Activity className="w-3 h-3" />
+                            <span>{metricLabels[mainReading.metric] || mainReading.metric}:</span>
+                            <span className="font-semibold">{mainReading.value} {mainReading.unit}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {deviceHasAlert ? (
+                          <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-medium">
+                            <AlertTriangle className="w-3 h-3" />
+                            Alert
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            OK
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1 text-gray-400 text-xs">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(device.last_seen).toLocaleString('el-GR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 text-right">
+            {filtered.length} συσκευές
+          </div>
         </div>
       )}
     </div>
