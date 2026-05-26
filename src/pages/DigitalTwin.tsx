@@ -6,6 +6,7 @@ import L from 'leaflet';
 import 'leaflet.heat';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const TOMTOM_KEY = process.env.REACT_APP_TOMTOM_KEY || '';
 const HERAKLION_CENTER: [number, number] = [35.3387, 25.1442];
 
 const MAP_STYLES = [
@@ -41,11 +42,9 @@ const createIcon = (color: string, emoji: string) => L.divIcon({
   className: '', iconSize: [28, 28], iconAnchor: [14, 14],
 });
 
-const crisisIcon   = createIcon('#9C27B0', '🆘');
-const fireIcon     = createIcon('#FF3D00', '🔥');
+const crisisIcon     = createIcon('#9C27B0', '🆘');
+const fireIcon       = createIcon('#FF3D00', '🔥');
 const earthquakeIcon = (mag: number) => createIcon(mag >= 4 ? '#FF6F00' : '#FDD835', '🌍');
-
-// Traffic icons ανά τύπο
 const roadWorksIcon  = createIcon('#FF8F00', '🔧');
 const roadClosedIcon = createIcon('#D32F2F', '🚫');
 const accidentIcon   = createIcon('#E53935', '💥');
@@ -56,27 +55,27 @@ const windIcon       = createIcon('#455A64', '💨');
 
 const getTrafficIcon = (type: string) => {
   switch(type) {
-    case 'road_works':       return roadWorksIcon;
-    case 'road_closed':      return roadClosedIcon;
-    case 'accident':         return accidentIcon;
-    case 'jam':              return trafficJamIcon;
-    case 'fog':              return fogIcon;
-    case 'flooding':         return floodingIcon;
-    case 'wind':             return windIcon;
-    default:                 return trafficJamIcon;
+    case 'road_works':            return roadWorksIcon;
+    case 'road_closed':           return roadClosedIcon;
+    case 'accident':              return accidentIcon;
+    case 'jam':                   return trafficJamIcon;
+    case 'fog':                   return fogIcon;
+    case 'flooding':              return floodingIcon;
+    case 'wind':                  return windIcon;
+    default:                      return trafficJamIcon;
   }
 };
 
 const getTrafficLabel = (type: string) => {
   const labels: Record<string, string> = {
-    road_works:  '🔧 Οδικά Έργα',
-    road_closed: '🚫 Κλειστός Δρόμος',
-    accident:    '💥 Ατύχημα',
-    jam:         '🚗 Κυκλοφοριακή Συμφόρηση',
-    fog:         '🌫️ Ομίχλη',
-    flooding:    '🌊 Πλημμύρα',
-    wind:        '💨 Ισχυροί Άνεμοι',
-    lane_closed: '⚠️ Κλειστή Λωρίδα',
+    road_works:           '🔧 Οδικά Έργα',
+    road_closed:          '🚫 Κλειστός Δρόμος',
+    accident:             '💥 Ατύχημα',
+    jam:                  '🚗 Συμφόρηση',
+    fog:                  '🌫️ Ομίχλη',
+    flooding:             '🌊 Πλημμύρα',
+    wind:                 '💨 Ισχυροί Άνεμοι',
+    lane_closed:          '⚠️ Κλειστή Λωρίδα',
     dangerous_conditions: '⚠️ Επικίνδυνες Συνθήκες',
   };
   return labels[type] || '🚗 Κυκλοφορία';
@@ -113,6 +112,7 @@ const DigitalTwin: React.FC = () => {
   const [showEarthquakes, setShowEarthquakes] = useState(true);
   const [showFires, setShowFires] = useState(true);
   const [showTraffic, setShowTraffic] = useState(true);
+  const [showTrafficFlow, setShowTrafficFlow] = useState(false);
   const [useClustering, setUseClustering] = useState(true);
   const [mapStyle, setMapStyle] = useState('osm');
   const [externalData, setExternalData] = useState<any>(null);
@@ -243,7 +243,7 @@ const DigitalTwin: React.FC = () => {
   if (externalData?.hazards?.auto_crisis) smartAlerts.push(`🔥 Ενεργή πυρκαγιά εντός 50km!`);
   if (externalData?.earthquakes?.significant?.length > 0) externalData.earthquakes.significant.forEach((eq: any) => smartAlerts.push(`🌍 Σεισμός ${eq.magnitude}R — ${eq.distance_km}km`));
   if (externalData?.air_quality?.aqi > 100) smartAlerts.push(`💨 Κακή ποιότητα αέρα — AQI ${externalData.air_quality.aqi}`);
-  if (externalData?.traffic?.incidents?.some((i: any) => i.severity === 'critical')) smartAlerts.push(`🚫 Κρίσιμο κυκλοφοριακό incident στο Ηράκλειο!`);
+  if (externalData?.traffic?.incidents?.some((i: any) => i.severity === 'critical')) smartAlerts.push(`🚫 Κρίσιμο κυκλοφοριακό incident!`);
 
   const activeReports = timelapse ? tlReports : (layers?.reports || []);
 
@@ -349,23 +349,36 @@ const DigitalTwin: React.FC = () => {
               </button>
               <button onClick={() => setShowTraffic(!showTraffic)}
                 className={`px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 ${showTraffic ? 'opacity-100' : 'opacity-40'}`}>
-                🚗 Κυκλοφορία
+                🚗 Incidents
               </button>
+              {TOMTOM_KEY && (
+                <button onClick={() => setShowTrafficFlow(!showTrafficFlow)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 ${showTrafficFlow ? 'opacity-100 ring-2 ring-green-400' : 'opacity-60'}`}>
+                  🛣️ Traffic Flow
+                </button>
+              )}
               <button onClick={() => setUseClustering(!useClustering)}
                 className={`px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 ${useClustering ? 'opacity-100' : 'opacity-40'}`}>
                 🔵 Clustering
               </button>
             </div>
 
-            {/* Traffic Legend */}
+            {showTrafficFlow && (
+              <div className="mt-3 pt-3 border-t flex items-center gap-3 text-xs">
+                <span className="font-medium text-gray-700">Traffic Flow Legend:</span>
+                <span className="flex items-center gap-1"><span className="w-6 h-2 rounded inline-block bg-green-500"/> Ελεύθερη</span>
+                <span className="flex items-center gap-1"><span className="w-6 h-2 rounded inline-block bg-yellow-400"/> Μέτρια</span>
+                <span className="flex items-center gap-1"><span className="w-6 h-2 rounded inline-block bg-red-500"/> Συμφόρηση</span>
+              </div>
+            )}
+
             {showTraffic && externalData?.traffic?.incidents?.length > 0 && (
-              <div className="mt-3 pt-3 border-t flex gap-3 flex-wrap text-xs text-gray-500">
-                <span className="font-medium text-gray-700">Κυκλοφορία:</span>
+              <div className="mt-2 pt-2 border-t flex gap-3 flex-wrap text-xs text-gray-500">
+                <span className="font-medium text-gray-700">Incidents:</span>
                 <span>🔧 Έργα</span>
                 <span>🚫 Κλειστός</span>
                 <span>💥 Ατύχημα</span>
                 <span>🚗 Συμφόρηση</span>
-                <span>🌫️ Ομίχλη</span>
               </div>
             )}
           </div>
@@ -380,6 +393,17 @@ const DigitalTwin: React.FC = () => {
           <div className="rounded-lg overflow-hidden shadow" style={{ height: '520px' }}>
             <MapContainer center={HERAKLION_CENTER} zoom={13} style={{ height: '100%', width: '100%' }}>
               <DynamicTileLayer styleKey={mapStyle} />
+
+              {/* TomTom Traffic Flow Overlay */}
+              {showTrafficFlow && TOMTOM_KEY && (
+                <TileLayer
+                  url={`https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=${TOMTOM_KEY}`}
+                  opacity={0.8}
+                  zIndex={500}
+                  attribution="© TomTom"
+                />
+              )}
+
               {showHeatmap && <HeatmapLayer2D points={heatmapPoints} />}
 
               {activeLayer.reports && (
@@ -466,7 +490,6 @@ const DigitalTwin: React.FC = () => {
             </div>
           )}
 
-          {/* Traffic Summary */}
           {externalData?.traffic && (
             <div className="bg-white rounded-lg shadow p-4">
               <h3 className="font-bold text-gray-800 mb-3">🚗 Κυκλοφορία</h3>
@@ -490,15 +513,12 @@ const DigitalTwin: React.FC = () => {
                     <div key={i} className="flex items-center gap-2 text-xs py-1 border-b">
                       <span>{getTrafficLabel(inc.type).split(' ')[0]}</span>
                       <span className="text-gray-600 truncate flex-1">{inc.location}</span>
-                      <span className={`font-medium ${inc.severity === 'critical' ? 'text-red-500' : inc.severity === 'major' ? 'text-orange-500' : 'text-gray-400'}`}>
+                      <span className={`font-medium ${inc.severity === 'critical' ? 'text-red-500' : 'text-gray-400'}`}>
                         {inc.severity}
                       </span>
                     </div>
                   ))}
                 </div>
-              )}
-              {externalData.traffic.source === 'fallback' && (
-                <p className="text-xs text-gray-300 mt-1">Traffic API μη διαθέσιμο</p>
               )}
             </div>
           )}
