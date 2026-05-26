@@ -490,7 +490,7 @@ const DigitalTwin: React.FC = () => {
                 controller={true}
                 layers={deck3DLayers as any}
               >
-                <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
+                <Map mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" />
               </DeckGL>
             )}
 
