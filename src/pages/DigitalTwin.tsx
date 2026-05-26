@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip, useMap, Marker, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip, useMap, Marker } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet.heat';
@@ -9,24 +9,9 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 const HERAKLION_CENTER: [number, number] = [35.3387, 25.1442];
 
 const MAP_STYLES = [
-  {
-    key: 'osm',
-    label: '🗺️ OSM',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '© OpenStreetMap contributors',
-  },
-  {
-    key: 'dark',
-    label: '🌙 Dark',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '© OpenStreetMap © CARTO',
-  },
-  {
-    key: 'terrain',
-    label: '🏔️ Terrain',
-    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    attribution: '© OpenStreetMap © OpenTopoMap',
-  },
+  { key: 'osm', label: '🗺️ OSM', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap contributors' },
+  { key: 'dark', label: '🌙 Dark', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '© OpenStreetMap © CARTO' },
+  { key: 'terrain', label: '🏔️ Terrain', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap © OpenTopoMap' },
 ];
 
 interface MapLayer {
@@ -56,10 +41,46 @@ const createIcon = (color: string, emoji: string) => L.divIcon({
   className: '', iconSize: [28, 28], iconAnchor: [14, 14],
 });
 
-const crisisIcon = createIcon('#9C27B0', '🆘');
-const fireIcon = createIcon('#FF3D00', '🔥');
+const crisisIcon   = createIcon('#9C27B0', '🆘');
+const fireIcon     = createIcon('#FF3D00', '🔥');
 const earthquakeIcon = (mag: number) => createIcon(mag >= 4 ? '#FF6F00' : '#FDD835', '🌍');
-const trafficIcon = createIcon('#607D8B', '🚗');
+
+// Traffic icons ανά τύπο
+const roadWorksIcon  = createIcon('#FF8F00', '🔧');
+const roadClosedIcon = createIcon('#D32F2F', '🚫');
+const accidentIcon   = createIcon('#E53935', '💥');
+const trafficJamIcon = createIcon('#F57C00', '🚗');
+const fogIcon        = createIcon('#78909C', '🌫️');
+const floodingIcon   = createIcon('#1565C0', '🌊');
+const windIcon       = createIcon('#455A64', '💨');
+
+const getTrafficIcon = (type: string) => {
+  switch(type) {
+    case 'road_works':       return roadWorksIcon;
+    case 'road_closed':      return roadClosedIcon;
+    case 'accident':         return accidentIcon;
+    case 'jam':              return trafficJamIcon;
+    case 'fog':              return fogIcon;
+    case 'flooding':         return floodingIcon;
+    case 'wind':             return windIcon;
+    default:                 return trafficJamIcon;
+  }
+};
+
+const getTrafficLabel = (type: string) => {
+  const labels: Record<string, string> = {
+    road_works:  '🔧 Οδικά Έργα',
+    road_closed: '🚫 Κλειστός Δρόμος',
+    accident:    '💥 Ατύχημα',
+    jam:         '🚗 Κυκλοφοριακή Συμφόρηση',
+    fog:         '🌫️ Ομίχλη',
+    flooding:    '🌊 Πλημμύρα',
+    wind:        '💨 Ισχυροί Άνεμοι',
+    lane_closed: '⚠️ Κλειστή Λωρίδα',
+    dangerous_conditions: '⚠️ Επικίνδυνες Συνθήκες',
+  };
+  return labels[type] || '🚗 Κυκλοφορία';
+};
 
 const HeatmapLayer2D: React.FC<{ points: any[] }> = ({ points }) => {
   const map = useMap();
@@ -75,7 +96,6 @@ const HeatmapLayer2D: React.FC<{ points: any[] }> = ({ points }) => {
   return null;
 };
 
-// Component για να αλλάζει το TileLayer δυναμικά
 const DynamicTileLayer: React.FC<{ styleKey: string }> = ({ styleKey }) => {
   const style = MAP_STYLES.find(s => s.key === styleKey) || MAP_STYLES[0];
   return <TileLayer key={styleKey} url={style.url} attribution={style.attribution} />;
@@ -223,6 +243,7 @@ const DigitalTwin: React.FC = () => {
   if (externalData?.hazards?.auto_crisis) smartAlerts.push(`🔥 Ενεργή πυρκαγιά εντός 50km!`);
   if (externalData?.earthquakes?.significant?.length > 0) externalData.earthquakes.significant.forEach((eq: any) => smartAlerts.push(`🌍 Σεισμός ${eq.magnitude}R — ${eq.distance_km}km`));
   if (externalData?.air_quality?.aqi > 100) smartAlerts.push(`💨 Κακή ποιότητα αέρα — AQI ${externalData.air_quality.aqi}`);
+  if (externalData?.traffic?.incidents?.some((i: any) => i.severity === 'critical')) smartAlerts.push(`🚫 Κρίσιμο κυκλοφοριακό incident στο Ηράκλειο!`);
 
   const activeReports = timelapse ? tlReports : (layers?.reports || []);
 
@@ -242,7 +263,6 @@ const DigitalTwin: React.FC = () => {
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Digital Twin — Ηράκλειο</h2>
@@ -291,23 +311,18 @@ const DigitalTwin: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
 
-          {/* Map Controls */}
+          {/* Controls */}
           <div className="bg-white rounded-lg shadow p-4 mb-4">
             <div className="flex gap-2 flex-wrap items-center">
-              {/* Map Style */}
               <span className="text-sm font-medium text-gray-700">Style:</span>
               {MAP_STYLES.map(s => (
                 <button key={s.key} onClick={() => setMapStyle(s.key)}
                   className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    mapStyle === s.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}>
+                    mapStyle === s.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                   {s.label}
                 </button>
               ))}
-
               <div className="w-px h-5 bg-gray-300 mx-1" />
-
-              {/* Layers */}
               <span className="text-sm font-medium text-gray-700">Layers:</span>
               {[
                 { key: 'reports', label: '📋 Αναφορές', color: 'bg-red-100 text-red-700' },
@@ -341,6 +356,18 @@ const DigitalTwin: React.FC = () => {
                 🔵 Clustering
               </button>
             </div>
+
+            {/* Traffic Legend */}
+            {showTraffic && externalData?.traffic?.incidents?.length > 0 && (
+              <div className="mt-3 pt-3 border-t flex gap-3 flex-wrap text-xs text-gray-500">
+                <span className="font-medium text-gray-700">Κυκλοφορία:</span>
+                <span>🔧 Έργα</span>
+                <span>🚫 Κλειστός</span>
+                <span>💥 Ατύχημα</span>
+                <span>🚗 Συμφόρηση</span>
+                <span>🌫️ Ομίχλη</span>
+              </div>
+            )}
           </div>
 
           {timelapse && (
@@ -350,11 +377,9 @@ const DigitalTwin: React.FC = () => {
             </div>
           )}
 
-          {/* Map */}
           <div className="rounded-lg overflow-hidden shadow" style={{ height: '520px' }}>
-            <MapContainer center={HERAKLION_CENTER} zoom={14} style={{ height: '100%', width: '100%' }}>
+            <MapContainer center={HERAKLION_CENTER} zoom={13} style={{ height: '100%', width: '100%' }}>
               <DynamicTileLayer styleKey={mapStyle} />
-
               {showHeatmap && <HeatmapLayer2D points={heatmapPoints} />}
 
               {activeLayer.reports && (
@@ -380,19 +405,26 @@ const DigitalTwin: React.FC = () => {
 
               {showEarthquakes && externalData?.earthquakes?.earthquakes?.map((eq: any, i: number) => (
                 <Marker key={`eq-${i}`} position={[eq.lat, eq.lng]} icon={earthquakeIcon(eq.magnitude)}>
-                  <Popup><p className="font-bold">🌍 {eq.magnitude}R</p><p>{eq.place}</p></Popup>
+                  <Popup><p className="font-bold">🌍 {eq.magnitude}R</p><p>{eq.place}</p><p>{eq.distance_km}km</p></Popup>
+                  <Tooltip>Σεισμός {eq.magnitude}R</Tooltip>
                 </Marker>
               ))}
 
               {showFires && externalData?.hazards?.fires?.map((fire: any, i: number) => (
                 <Marker key={`fire-${i}`} position={[fire.lat, fire.lng]} icon={fireIcon}>
-                  <Popup><p className="font-bold">🔥 Πυρκαγιά — {fire.distance_km}km</p></Popup>
+                  <Popup><p className="font-bold">🔥 Πυρκαγιά</p><p>Απόσταση: {fire.distance_km}km</p></Popup>
+                  <Tooltip>Πυρκαγιά {fire.distance_km}km</Tooltip>
                 </Marker>
               ))}
 
               {showTraffic && externalData?.traffic?.incidents?.map((inc: any, i: number) => (
-                <Marker key={`traffic-${i}`} position={[inc.lat, inc.lng]} icon={trafficIcon}>
-                  <Popup><p className="font-bold">🚗 {inc.type}</p><p>{inc.location}</p></Popup>
+                <Marker key={`traffic-${i}`} position={[inc.lat, inc.lng]} icon={getTrafficIcon(inc.type)}>
+                  <Popup>
+                    <p className="font-bold">{getTrafficLabel(inc.type)}</p>
+                    <p className="text-sm">{inc.location}</p>
+                    <p className="text-xs text-gray-500">Σοβαρότητα: {inc.severity}</p>
+                  </Popup>
+                  <Tooltip>{getTrafficLabel(inc.type)}</Tooltip>
                 </Marker>
               ))}
             </MapContainer>
@@ -431,6 +463,43 @@ const DigitalTwin: React.FC = () => {
                   <p className="text-xs text-gray-400">PM2.5: {externalData.air_quality.pm25} μg/m³</p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Traffic Summary */}
+          {externalData?.traffic && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="font-bold text-gray-800 mb-3">🚗 Κυκλοφορία</h3>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
+                  externalData.traffic.congestion_level === 'high' ? 'bg-red-500' :
+                  externalData.traffic.congestion_level === 'moderate' ? 'bg-orange-400' : 'bg-green-500'}`}>
+                  {externalData.traffic.congestion_percentage}%
+                </div>
+                <div>
+                  <p className="font-medium text-sm">
+                    {externalData.traffic.congestion_level === 'high' ? 'Υψηλή συμφόρηση' :
+                     externalData.traffic.congestion_level === 'moderate' ? 'Μέτρια κίνηση' : 'Ελεύθερη κίνηση'}
+                  </p>
+                  <p className="text-xs text-gray-400">{externalData.traffic.incidents?.length || 0} incidents</p>
+                </div>
+              </div>
+              {externalData.traffic.incidents?.length > 0 && (
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {externalData.traffic.incidents.map((inc: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs py-1 border-b">
+                      <span>{getTrafficLabel(inc.type).split(' ')[0]}</span>
+                      <span className="text-gray-600 truncate flex-1">{inc.location}</span>
+                      <span className={`font-medium ${inc.severity === 'critical' ? 'text-red-500' : inc.severity === 'major' ? 'text-orange-500' : 'text-gray-400'}`}>
+                        {inc.severity}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {externalData.traffic.source === 'fallback' && (
+                <p className="text-xs text-gray-300 mt-1">Traffic API μη διαθέσιμο</p>
+              )}
             </div>
           )}
 
