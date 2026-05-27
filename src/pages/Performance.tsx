@@ -4,6 +4,7 @@ import {
   Trophy, Star, Clock, Ticket, Users,
   CheckCircle, XCircle, Medal,
 } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
@@ -72,6 +73,7 @@ const Performance: React.FC = () => {
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
           <Trophy className="w-7 h-7 text-[#F6AE2D]" />
           Performance Συνεργείων
+          <InfoButton title="Performance Συνεργείων" description="Απόδοση τμημάτων και υπαλλήλων. Μέσος χρόνος επίλυσης, SLA compliance, σύγκριση περιόδων." />
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">Leaderboard αξιολόγησης προσωπικού</p>
       </div>

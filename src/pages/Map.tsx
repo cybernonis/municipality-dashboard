@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { getReports } from '../services/api';
 import { Report } from '../types';
 import { Map as MapIcon, MapPin, Calendar, List } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const HERAKLION: [number, number] = [35.3387, 25.1442];
 
@@ -96,6 +97,7 @@ const MapPage: React.FC = () => {
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
           <MapIcon className="w-7 h-7 text-[#2E86AB]" />
           Χάρτης Αναφορών
+          <InfoButton title="Χάρτης Αναφορών" description="Γεωγραφική απεικόνιση αναφορών. Markers χρωματίζονται κατά status. Κλικ σε marker → λεπτομέρειες." />
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
           {geoReports.length} αναφορές με συντεταγμένες · σύνολο {reports.length}

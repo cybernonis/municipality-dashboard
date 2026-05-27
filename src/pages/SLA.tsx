@@ -4,6 +4,7 @@ import {
   Clock, Download, FileDown, FileText, RefreshCw,
   Building, Calendar, AlertTriangle, CheckCircle, Search,
 } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
@@ -176,6 +177,7 @@ const SLA: React.FC = () => {
           <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
             <Clock className="w-7 h-7 text-[#2E86AB]" />
             SLA Tracking
+            <InfoButton title="SLA Tracking" description="Παρακολούθηση χρόνων απόκρισης. Ορίζει deadline επίλυσης ανά κατηγορία και τμήμα." />
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Αυτόματη ανανέωση κάθε λεπτό</p>
         </div>

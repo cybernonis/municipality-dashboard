@@ -7,6 +7,7 @@ import {
   Sun, Cloud, CloudRain, CloudSnow, Wind, Droplets,
   BarChart2, Trophy, Building2,
 } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const CATEGORY_LABELS: Record<string, string> = {
   road_damage: 'Βλάβη Δρόμου', lighting: 'Φωτισμός', waste: 'Σκουπίδια',
@@ -146,7 +147,10 @@ const Dashboard: React.FC = () => {
       {/* ─── Header ─── */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F]">Καλώς ήρθατε, Διαχειριστή</h1>
+          <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
+            Καλώς ήρθατε, Διαχειριστή
+            <InfoButton title="Dashboard" description="Κεντρική επισκόπηση KPIs, καιρού και αναφορών σε real-time." />
+          </h1>
           <p className="text-gray-500 text-sm mt-0.5">Δήμος Ηρακλείου — Smart City Dashboard</p>
         </div>
         <p className="text-sm text-gray-400 mt-1">

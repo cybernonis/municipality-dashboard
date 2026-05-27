@@ -9,6 +9,7 @@ import {
   Flame, Wind, Globe, Car, Activity,
   Cloud, Timer, Gauge, Loader,
 } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 const TOMTOM_KEY = process.env.REACT_APP_TOMTOM_KEY || '';
@@ -280,6 +281,7 @@ const DigitalTwin: React.FC = () => {
           <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
             <Layers className="w-7 h-7 text-[#2E86AB]" />
             Digital Twin — Ηράκλειο
+            <InfoButton title="Digital Twin" description="Real-time ψηφιακός χάρτης πόλης. Layers: αναφορές, IoT sensors, κρίσεις, κίνηση, σεισμοί, φωτιές." />
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Ψηφιακό αντίγραφο σε real-time</p>
         </div>

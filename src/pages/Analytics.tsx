@@ -9,6 +9,7 @@ import {
   BarChart2, Download, FileDown, FileText,
   TrendingUp, AlertTriangle, CheckCircle, Cpu,
 } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const categoryLabels: Record<string, string> = {
   road_damage: 'Δρόμοι', lighting: 'Φωτισμός', waste: 'Σκουπίδια',
@@ -156,6 +157,7 @@ const Analytics: React.FC = () => {
           <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
             <BarChart2 className="w-7 h-7 text-[#2E86AB]" />
             Analytics
+            <InfoButton title="Analytics" description="Στατιστικά και γραφήματα αναφορών για παρουσίαση στο δημοτικό συμβούλιο." />
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Στατιστικά αναφορών — Δήμος Ηρακλείου</p>
         </div>

@@ -5,6 +5,7 @@ import {
   ExternalLink, XCircle, Phone, Flame, Droplets,
   Zap, Car, Activity, Wind, Building,
 } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
@@ -89,6 +90,7 @@ const Crisis: React.FC = () => {
           <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
             <AlertTriangle className="w-7 h-7 text-[#E63946]" />
             Crisis Management
+            <InfoButton title="Crisis Management" description="Διαχείριση έκτακτων καταστάσεων. Alerts για φυσικές καταστροφές, ατυχήματα και εκτάκτους ανάγκες." />
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Αυτόματη ανανέωση κάθε 30 δευτερόλεπτα</p>
         </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Crown, Star, Zap, Users, TrendingUp, Award, Medal, Hash } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
@@ -55,6 +56,7 @@ const Leaderboard: React.FC = () => {
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
           <Crown className="w-7 h-7 text-[#F6AE2D]" />
           Leaderboard Πολιτών
+          <InfoButton title="Leaderboard Πολιτών" description="Κατάταξη πολιτών βάσει XP από αναφορές. Ενισχύει ενεργή συμμετοχή στην πόλη." />
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">Κατάταξη ενεργών πολιτών βάσει XP</p>
       </div>

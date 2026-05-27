@@ -5,6 +5,7 @@ import {
   Calendar, Crown, Shield, Wrench, Search,
   CheckCircle, XCircle, RefreshCw,
 } from 'lucide-react';
+import InfoButton from '../components/InfoButton';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
@@ -127,6 +128,7 @@ const Staff: React.FC = () => {
           <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
             <Users className="w-7 h-7 text-[#2E86AB]" />
             Διαχείριση Προσωπικού
+            <InfoButton title="Διαχείριση Προσωπικού" description="Διαχείριση εργαζομένων. Ανάθεση αναφορών, φόρτος εργασίας, tasks εκδηλώσεων." />
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">{staff.length} υπάλληλοι συνολικά</p>
         </div>
