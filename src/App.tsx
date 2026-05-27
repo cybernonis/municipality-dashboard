@@ -24,6 +24,8 @@ import SLA from './pages/SLA';
 import Predictive from './pages/Predictive';
 import IoT from './pages/IoT';
 import DigitalTwin from './pages/DigitalTwin';
+import Leaderboard from './pages/Leaderboard';
+import GamificationManagement from './pages/GamificationManagement';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 const isLoggedIn = () => !!localStorage.getItem('token');
@@ -93,6 +95,8 @@ function App() {
                 <Route path="/iot"               element={<IoT />} />
                 <Route path="/digital-twin"      element={<DigitalTwin />} />
                 <Route path="/staff"             element={<Staff />} />
+                <Route path="/leaderboard"      element={<Leaderboard />} />
+                <Route path="/gamification"     element={<GamificationManagement />} />
               </Routes>
               <Chatbot />
               <AlertBanner />

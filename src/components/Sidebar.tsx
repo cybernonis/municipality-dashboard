@@ -8,6 +8,7 @@ import {
   Settings, Bell, LogOut, FileSpreadsheet,
   ChevronLeft, ChevronRight, BellOff,
   Flame, Droplets, Wind, Globe, FileCheck,
+  Crown, Gamepad2,
 } from 'lucide-react';
 
 const WS_URL = (process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000')
@@ -97,6 +98,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/crisis',        label: 'Crisis',       Icon: AlertTriangle },
       { path: '/participation', label: 'Συμμετοχή',   Icon: MessageSquare },
+    ],
+  },
+  {
+    label: 'GAMIFICATION',
+    items: [
+      { path: '/leaderboard',  label: 'Leaderboard',  Icon: Crown },
+      { path: '/gamification', label: 'Gamification', Icon: Gamepad2 },
     ],
   },
   {
