@@ -1103,8 +1103,8 @@ export default function DigitalTwin() {
         </button>
       </header>
 
-      {/* ===================== MAIN: SIDEBAR + MAP ===================== */}
-      <div style={S.main}>
+      {/* ===================== MAIN: 3-column row ===================== */}
+      <div style={S.main} className="dt-main">
         {/* --------------------------- SIDEBAR --------------------------- */}
         <aside style={S.sidebar} className="dt-sidebar dt-noprint">
           {/* LAYERS */}
@@ -1339,8 +1339,8 @@ export default function DigitalTwin() {
           </div>
           <div style={S.extCard}>
             <div style={S.extCardHead}><Car size={16} color={COLORS.secondary} /><span>Κίνηση</span></div>
-            <div style={S.extCardBody}>
-              {incidents.length ? incidents.map((inc, k) => <div key={k}>• {inc.type ?? inc.description ?? '—'}{inc.location ? ` — ${inc.location}` : ''}</div>) : 'Χωρίς συμβάντα'}
+            <div style={{ ...S.extCardBody, ...S.extCardScroll }}>
+              {incidents.length ? incidents.slice(0, 5).map((inc, k) => <div key={k}>• {inc.type ?? inc.description ?? '—'}{inc.location ? ` — ${inc.location}` : ''}</div>) : 'Χωρίς συμβάντα'}
             </div>
           </div>
           <div style={S.extCard}>
@@ -1486,9 +1486,9 @@ const S: Record<string, React.CSSProperties> = {
   stat: { whiteSpace: 'nowrap' },
   pdfBtn: { background: COLORS.accent, color: COLORS.navyDark, border: 'none', padding: '7px 12px', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: 13 },
 
-  // main
-  main: { display: 'flex', flex: 1, minHeight: 0, position: 'relative' },
-  sidebar: { width: 300, flexShrink: 0, background: COLORS.panelAlt, borderRight: `1px solid ${COLORS.border}`, overflowY: 'auto', padding: 10 },
+  // main — 3-column flex row
+  main: { display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, overflow: 'hidden' },
+  sidebar: { width: 340, flexShrink: 0, height: '100%', background: COLORS.panelAlt, borderRight: `1px solid ${COLORS.border}`, overflowY: 'auto', padding: 10, boxSizing: 'border-box' },
 
   // accordion
   accSection: { background: '#fff', border: `1px solid ${COLORS.border}`, borderRadius: 8, marginBottom: 8, overflow: 'hidden' },
@@ -1516,12 +1516,13 @@ const S: Record<string, React.CSSProperties> = {
   cardBody: { fontSize: 12, color: COLORS.text, lineHeight: 1.5 },
 
   // map
-  mapWrap: { position: 'relative', flex: 1, minWidth: 0 },
+  mapWrap: { position: 'relative', flex: 1, minWidth: 0, height: '100%' },
   floatControls: { position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 5 },
-  rightSidebar: { width: 320, flexShrink: 0, overflowY: 'auto' as const, background: '#F8FAFC', borderLeft: `1px solid ${COLORS.border}`, padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 12 },
-  extCard: { background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.08)', padding: 14 },
+  rightSidebar: { width: 320, flexShrink: 0, height: '100%', overflowY: 'auto' as const, background: '#F8FAFC', borderLeft: `1px solid ${COLORS.border}`, padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 12, boxSizing: 'border-box' as const },
+  extCard: { background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.08)', padding: 14, width: '100%', boxSizing: 'border-box' as const, overflowWrap: 'break-word' as const },
   extCardHead: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontWeight: 700, fontSize: 13, color: COLORS.navy },
   extCardBody: { fontSize: 12, color: COLORS.text, lineHeight: 1.6 },
+  extCardScroll: { maxHeight: 200, overflowY: 'auto' as const },
   fctrl: { width: 36, height: 36, border: 'none', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700, color: COLORS.navy, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
   fselect: { border: 'none', borderRadius: 6, padding: '6px', background: '#fff', cursor: 'pointer', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
 
@@ -1547,11 +1548,13 @@ const CSS = `
   .dt-acc-header:hover { background: ${COLORS.panelAlt}; }
   .dt-rightsidebar::-webkit-scrollbar { width: 5px; }
   .dt-rightsidebar::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 3px; }
-  @media (max-width: 767px) {
-    .dt-main { flex-direction: column !important; }
-    .dt-mapwrap { flex: 0 0 55vh !important; min-height: 55vh !important; }
+  @media (max-width: 900px) {
+    .dt-main { flex-direction: column !important; overflow-y: auto !important; }
+    .dt-sidebar { width: 100% !important; height: auto !important; }
+    .dt-mapwrap { flex: 0 0 400px !important; min-height: 400px !important; height: 400px !important; width: 100% !important; }
     .dt-rightsidebar {
       width: 100% !important;
+      height: auto !important;
       border-left: none !important;
       border-top: 1px solid ${COLORS.border} !important;
       flex-direction: row !important;
@@ -1562,8 +1565,9 @@ const CSS = `
       gap: 8px !important;
     }
     .dt-rightsidebar > * {
-      flex: 0 0 220px !important;
-      min-width: 220px !important;
+      flex: 0 0 240px !important;
+      min-width: 240px !important;
+      height: auto !important;
     }
   }
   @media print {
