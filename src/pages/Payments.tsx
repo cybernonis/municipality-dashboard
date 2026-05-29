@@ -8,7 +8,7 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 const stripePromise = loadStripe('pk_test_51TX9LACIMZTvCFxONeNAyaFP5wyCwsgEPJXCKKyOejYaWv8grxC8JttBnhkGabmfkCOo5mhEWdPJR03cM5BoFSuD005hoUYWtw');
 
 interface PaymentType {

@@ -1510,7 +1510,7 @@ const S: Record<string, React.CSSProperties> = {
   cardBody: { fontSize: 12, color: COLORS.text, lineHeight: 1.5 },
 
   // map
-  mapWrap: { position: 'relative', flex: 1, minWidth: 0, height: '100%' },
+  mapWrap: { position: 'relative', flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' },
   floatControls: { position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 5 },
   rightSidebar: { width: 320, flexShrink: 0, height: '100%', overflowY: 'auto' as const, background: '#F8FAFC', borderLeft: `1px solid ${COLORS.border}`, padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 12, boxSizing: 'border-box' as const },
   extCard: { background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.08)', padding: 14, width: '100%', boxSizing: 'border-box' as const, overflowWrap: 'break-word' as const },

@@ -9,7 +9,7 @@ import {
   ExternalLink, XCircle, FileText, Image, AlertTriangle, Loader,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 
 const categoryLabels: Record<string, string> = {
   road_damage: 'Βλάβη Δρόμου',

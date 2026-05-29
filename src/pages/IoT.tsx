@@ -5,7 +5,7 @@ import {
   Thermometer, Activity, Trash2, Lightbulb, Droplets, Car, X,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 
 interface Device {
   id: string;

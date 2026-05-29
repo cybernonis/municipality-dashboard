@@ -47,7 +47,7 @@ const saveNotifications = (notifications: Notification[]) => {
   } catch {}
 };
 
-const WS_URL = (process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000')
+const WS_URL = (process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app')
   .replace('https://', 'wss://')
   .replace('http://', 'ws://');
 

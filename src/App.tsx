@@ -29,7 +29,7 @@ import GamificationManagement from './pages/GamificationManagement';
 import Announcements from './pages/Announcements';
 import Appointments from './pages/Appointments';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 const isLoggedIn = () => !!localStorage.getItem('token');
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {

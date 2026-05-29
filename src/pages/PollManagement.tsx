@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 
 const COLORS = ['#1565C0', '#EF5350', '#66BB6A', '#FFA726', '#AB47BC', '#26C6DA'];
 

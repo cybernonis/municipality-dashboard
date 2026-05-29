@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { FileSpreadsheet, TrendingUp, CheckCircle, Clock, Loader } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 
 const COLORS = ['#1E3A5F', '#2E86AB', '#2D936C', '#F6AE2D', '#E63946', '#6366f1'];
 

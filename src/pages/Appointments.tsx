@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import InfoButton from '../components/InfoButton';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   pending:   { label: 'Εκκρεμής',      cls: 'bg-amber-100 text-amber-700' },

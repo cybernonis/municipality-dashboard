@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import InfoButton from '../components/InfoButton';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 
 const STATUS_LABELS: Record<string, string> = {
   submitted:   'Υποβλήθηκε',
