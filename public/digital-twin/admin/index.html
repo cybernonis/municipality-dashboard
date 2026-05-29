@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digital Twin — Δήμος Ηρακλείου</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --navy:#1E3A5F; --navy-deep:#132237; --accent:#2E86AB; --bg:#0d1b2a; --text:#e2e8f0; --muted:#94a3b8; --border:rgba(255,255,255,0.09); }
+    html, body { height:100%; width:100%; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
+
+    /* ALERT BANNER */
+    #alert-banner { display:none; background:#7f1d1d; border-bottom:2px solid #ef4444; padding:7px 18px; font-size:12px; font-weight:600; color:#fca5a5; align-items:center; gap:10px; flex-shrink:0; z-index:60; position:relative; }
+    #alert-banner.show { display:flex; }
+    #alert-close { margin-left:auto; background:none; border:none; color:#fca5a5; cursor:pointer; font-size:16px; line-height:1; }
+
+    /* TOPBAR */
+    #topbar { height:52px; background:var(--navy); display:flex; align-items:center; padding:0 18px; gap:10px; border-bottom:1px solid rgba(255,255,255,0.07); flex-shrink:0; z-index:50; position:relative; box-shadow:0 2px 12px rgba(0,0,0,0.4); }
+    .tb-logo { width:30px; height:30px; background:rgba(255,255,255,0.12); border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+    .tb-title { font-size:14px; font-weight:700; color:#fff; }
+    .tb-sub   { font-size:12px; color:rgba(255,255,255,0.42); margin-left:3px; }
+    .tb-stats { margin-left:auto; display:flex; align-items:center; gap:14px; }
+    .tb-stat  { text-align:right; }
+    .tb-stat-num { font-size:15px; font-weight:700; color:#fff; line-height:1; }
+    .tb-stat-lbl { font-size:10px; color:rgba(255,255,255,0.38); }
+    .tb-sep  { width:1px; height:22px; background:rgba(255,255,255,0.1); }
+    #status-badge { padding:3px 11px; border-radius:20px; font-size:11px; font-weight:600; background:rgba(46,134,171,0.18); color:#7dd3fc; border:1px solid rgba(46,134,171,0.3); white-space:nowrap; }
+    .btn-pdf { padding:5px 11px; border-radius:7px; font-size:11px; font-weight:600; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.18); color:#fff; cursor:pointer; white-space:nowrap; }
+    .btn-pdf:hover { background:rgba(255,255,255,0.2); }
+
+    /* LAYOUT */
+    #app { display:flex; height:calc(100vh - 52px); }
+
+    /* SIDEBAR */
+    #sidebar { width:268px; background:var(--navy-deep); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; flex-shrink:0; }
+    #sidebar::-webkit-scrollbar { width:4px; }
+    #sidebar::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:2px; }
+    .s-panel { padding:13px 15px; border-bottom:1px solid var(--border); }
+    .s-head { font-size:9px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-bottom:10px; }
+    .layer-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; }
+    .layer-info { display:flex; align-items:center; gap:8px; }
+    .layer-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .layer-lbl { font-size:12px; color:var(--text); }
+    .toggle { position:relative; width:34px; height:18px; }
+    .toggle input { opacity:0; width:0; height:0; position:absolute; }
+    .toggle-track { position:absolute; inset:0; border-radius:9px; background:rgba(255,255,255,0.1); cursor:pointer; transition:background .2s; }
+    .toggle-track::after { content:''; position:absolute; width:12px; height:12px; border-radius:50%; background:rgba(255,255,255,0.35); top:3px; left:3px; transition:transform .2s,background .2s; }
+    .toggle input:checked + .toggle-track { background:var(--accent); }
+    .toggle input:checked + .toggle-track::after { transform:translateX(16px); background:#fff; }
+    .sl-group { margin-bottom:11px; }
+    .sl-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+    .sl-lbl { font-size:11px; color:var(--muted); }
+    .sl-val { font-size:11px; font-weight:600; color:var(--accent); background:rgba(46,134,171,0.13); padding:1px 6px; border-radius:4px; }
+    input[type="range"] { -webkit-appearance:none; width:100%; height:4px; border-radius:2px; background:rgba(255,255,255,0.1); outline:none; cursor:pointer; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:13px; height:13px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid rgba(255,255,255,0.25); }
+    select.s-sel { width:100%; padding:5px 8px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); border-radius:6px; color:var(--text); font-size:11.5px; cursor:pointer; outline:none; margin-bottom:9px; }
+    select.s-sel option { background:#1E3A5F; }
+    .btn-sim { width:100%; padding:8px 12px; background:var(--navy); border:1px solid rgba(46,134,171,0.35); color:#fff; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; transition:all .2s; display:flex; align-items:center; justify-content:center; gap:6px; }
+    .btn-sim:hover:not(:disabled) { background:var(--accent); border-color:var(--accent); }
+    .btn-sim:disabled { opacity:.5; cursor:not-allowed; }
+    .btn-row { display:flex; gap:5px; margin-top:7px; }
+    .btn-sm { flex:1; padding:6px 4px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; border:1px solid rgba(255,255,255,0.12); background:transparent; color:var(--muted); }
+    .btn-sm:hover { color:#fff; background:rgba(255,255,255,0.1); }
+    .btn-sm.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .veh-cnts { display:flex; margin-bottom:9px; gap:4px; }
+    .vc { flex:1; background:rgba(255,255,255,0.05); border-radius:6px; padding:6px 4px; text-align:center; }
+    .vc-n { font-size:13px; font-weight:700; color:var(--text); }
+    .vc-l { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+    .hm-ctl { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+    .hm-play { width:30px; height:30px; border-radius:50%; background:var(--accent); border:none; color:#fff; cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .hm-tlbl { font-size:12px; font-weight:600; color:var(--text); flex:1; text-align:center; }
+    .hm-prog { width:100%; height:3px; background:rgba(255,255,255,0.1); border-radius:2px; margin-bottom:7px; overflow:hidden; }
+    .hm-bar  { height:100%; background:var(--accent); border-radius:2px; transition:width .3s; }
+    .r-stat { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border); }
+    .r-stat:last-child { border-bottom:none; }
+    .r-lbl { font-size:11px; color:var(--muted); }
+    .r-val { font-size:12px; font-weight:600; color:var(--text); }
+    .badge { padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; }
+    .badge-high   { background:rgba(239,68,68,.18);  color:#f87171; }
+    .badge-medium { background:rgba(234,179,8,.18);  color:#fbbf24; }
+    .badge-low    { background:rgba(34,197,94,.18);  color:#4ade80; }
+    .btn-clr { width:100%; padding:6px 12px; margin-top:7px; background:transparent; border:1px solid rgba(255,255,255,0.12); color:var(--muted); border-radius:7px; font-size:11.5px; cursor:pointer; transition:all .2s; }
+    .btn-clr:hover { border-color:rgba(239,68,68,0.4); color:#f87171; background:rgba(239,68,68,0.07); }
+    .al-item { padding:5px 0; border-bottom:1px solid var(--border); }
+    .al-item:last-child { border-bottom:none; }
+    .al-time { font-size:10px; color:var(--muted); }
+    .al-msg  { font-size:11px; margin-top:1px; }
+    .s-foot { padding:13px 15px; font-size:10.5px; color:rgba(255,255,255,0.22); line-height:1.7; margin-top:auto; }
+
+    /* MAP AREA */
+    #map-wrap { flex:1; display:flex; overflow:hidden; }
+    #map-area { flex:1; position:relative; overflow:hidden; }
+    #map-canvas { position:absolute; inset:0; }
+
+    /* STREET VIEW */
+    #sv-panel { width:0; overflow:hidden; transition:width .3s; background:#000; position:relative; flex-shrink:0; }
+    #sv-panel.open { width:370px; }
+    #sv-pano { width:100%; height:100%; }
+    #sv-close { position:absolute; top:9px; right:9px; z-index:10; background:rgba(0,0,0,0.65); border:none; color:#fff; width:26px; height:26px; border-radius:50%; cursor:pointer; font-size:13px; }
+    #sv-nocov { display:none; position:absolute; inset:0; background:#0d1b2a; flex-direction:column; align-items:center; justify-content:center; gap:8px; font-size:12px; color:var(--muted); text-align:center; padding:20px; }
+
+    /* OVERLAYS */
+    #loader { position:absolute; inset:0; z-index:30; background:rgba(10,21,32,.8); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(3px); pointer-events:none; }
+    .spin { width:38px; height:38px; border:3px solid rgba(46,134,171,.2); border-top-color:var(--accent); border-radius:50%; animation:spin .75s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    #legend { position:absolute; bottom:28px; right:14px; z-index:20; background:rgba(18,34,53,.93); backdrop-filter:blur(10px); border:1px solid var(--border); border-radius:10px; padding:11px 14px; min-width:148px; }
+    .leg-head { font-size:9px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-bottom:8px; }
+    .leg-row { display:flex; align-items:center; gap:7px; padding:2px 0; }
+    .leg-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .leg-sq  { width:9px; height:9px; border-radius:2px; flex-shrink:0; opacity:.75; }
+    .leg-lbl { font-size:11px; color:var(--muted); }
+    .leg-sep { height:1px; background:var(--border); margin:6px 0; }
+    #notif { position:absolute; top:12px; left:14px; z-index:25; background:rgba(18,34,53,.95); border:1px solid var(--border); border-radius:9px; padding:10px 13px; max-width:260px; display:none; backdrop-filter:blur(10px); }
+    .notif-t { font-size:12px; font-weight:600; margin-bottom:2px; }
+    .notif-b { font-size:11px; color:var(--muted); line-height:1.5; }
+  </style>
+</head>
+<body>
+
+<div id="alert-banner">
+  <span>🚨</span>
+  <span id="alert-msg">Υψηλός κίνδυνος εντοπίστηκε!</span>
+  <button id="alert-close" onclick="document.getElementById('alert-banner').classList.remove('show')">✕</button>
+</div>
+
+<div id="topbar">
+  <div class="tb-logo">🏙️</div>
+  <div><span class="tb-title">Digital Twin</span><span class="tb-sub">— Δήμος Ηρακλείου</span></div>
+  <div class="tb-stats">
+    <div class="tb-stat"><div class="tb-stat-num" id="stat-reports">—</div><div class="tb-stat-lbl">Αναφορές</div></div>
+    <div class="tb-sep"></div>
+    <div class="tb-stat"><div class="tb-stat-num" id="stat-appts">—</div><div class="tb-stat-lbl">Ραντεβού</div></div>
+    <div class="tb-sep"></div>
+    <div class="tb-stat"><div class="tb-stat-num" id="stat-zones">—</div><div class="tb-stat-lbl">Ζώνες</div></div>
+    <div class="tb-sep"></div>
+    <div id="status-badge">Φόρτωση…</div>
+    <button class="btn-pdf" onclick="exportPDF()">⬇ PDF</button>
+  </div>
+</div>
+
+<div id="app">
+  <div id="sidebar">
+
+    <!-- LAYERS -->
+    <div class="s-panel">
+      <div class="s-head">Επίπεδα Χάρτη</div>
+      <div class="layer-row">
+        <div class="layer-info"><div class="layer-dot" style="background:#ef4444"></div><span class="layer-lbl">Θερμ. Χάρτης</span></div>
+        <label class="toggle"><input type="checkbox" checked onchange="toggleLayer('heatmap',this.checked)"><div class="toggle-track"></div></label>
+      </div>
+      <div class="layer-row">
+        <div class="layer-info"><div class="layer-dot" style="background:#3b82f6"></div><span class="layer-lbl">Ζώνες Πλημμύρας</span></div>
+        <label class="toggle"><input type="checkbox" onchange="toggleLayer('flood',this.checked)"><div class="toggle-track"></div></label>
+      </div>
+      <div class="layer-row">
+        <div class="layer-info"><div class="layer-dot" style="background:#f59e0b"></div><span class="layer-lbl">Κίνδυνοι Δρόμων</span></div>
+        <label class="toggle"><input type="checkbox" onchange="toggleLayer('roads',this.checked)"><div class="toggle-track"></div></label>
+      </div>
+      <div class="layer-row">
+        <div class="layer-info"><div class="layer-dot" style="background:#f97316"></div><span class="layer-lbl">Κυκλοφορία Live</span></div>
+        <label class="toggle"><input type="checkbox" onchange="toggleTraffic(this.checked)"><div class="toggle-track"></div></label>
+      </div>
+      <div class="layer-row">
+        <div class="layer-info"><div class="layer-dot" style="background:#a855f7"></div><span class="layer-lbl">Πλέγμα Κινδύνου</span></div>
+        <label class="toggle"><input type="checkbox" onchange="toggleLayer('grid',this.checked)"><div class="toggle-track"></div></label>
+      </div>
+    </div>
+
+    <!-- VEHICLE SIM -->
+    <div class="s-panel">
+      <div class="s-head">Προσομοίωση Οχημάτων</div>
+      <div class="veh-cnts">
+        <div class="vc"><div class="vc-n" id="vc-count">0</div><div class="vc-l">Οχήματα</div></div>
+        <div class="vc"><div class="vc-n" id="vc-spd">—</div><div class="vc-l">km/h</div></div>
+        <div class="vc"><div class="vc-n" id="vc-cong">—</div><div class="vc-l">Κυκλοφ.</div></div>
+      </div>
+      <div class="sl-group">
+        <div class="sl-row"><span class="sl-lbl">Ταχύτητα</span><span class="sl-val"><span id="v-vs">1</span>×</span></div>
+        <input type="range" min="1" max="10" value="1" oninput="setVehSpeed(this.value)">
+      </div>
+      <select class="s-sel" onchange="setVehMode(this.value)">
+        <option value="normal">Κανονική κυκλοφορία</option>
+        <option value="rush">Ώρα αιχμής</option>
+        <option value="emergency">Έκτακτη ανάγκη</option>
+      </select>
+      <div class="btn-row">
+        <button class="btn-sm" id="btn-vs" onclick="startVeh()">▶ Εκκίνηση</button>
+        <button class="btn-sm" onclick="stopVeh()">⏹ Στοπ</button>
+        <button class="btn-sm" onclick="resetVeh()">↺</button>
+      </div>
+    </div>
+
+    <!-- HEATMAP ANIM -->
+    <div class="s-panel">
+      <div class="s-head">Κίνηση Θερμ. Χάρτη (24ω)</div>
+      <div class="hm-ctl">
+        <button class="hm-play" id="hm-btn" onclick="toggleHmAnim()">▶</button>
+        <span class="hm-tlbl" id="hm-lbl">00:00</span>
+      </div>
+      <div class="hm-prog"><div class="hm-bar" id="hm-bar" style="width:0%"></div></div>
+      <input type="range" min="0" max="23" value="0" id="hm-sl" oninput="setHmHour(+this.value)">
+    </div>
+
+    <!-- FLOOD SIM -->
+    <div class="s-panel">
+      <div class="s-head">Προσομοίωση Πλημμύρας</div>
+      <div class="sl-group">
+        <div class="sl-row"><span class="sl-lbl">Βροχόπτωση</span><span class="sl-val"><span id="v-rain">50</span> mm</span></div>
+        <input type="range" id="sl-rain" min="0" max="200" value="50" oninput="document.getElementById('v-rain').textContent=this.value">
+      </div>
+      <div class="sl-group">
+        <div class="sl-row"><span class="sl-lbl">Διάρκεια</span><span class="sl-val"><span id="v-dur">6</span> ώρες</span></div>
+        <input type="range" id="sl-dur" min="1" max="24" value="6" oninput="document.getElementById('v-dur').textContent=this.value">
+      </div>
+      <button class="btn-sim" id="sim-btn" onclick="runSimulation()">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M3 2l7 4-7 4V2z"/></svg>
+        Εκτέλεση Προσομοίωσης
+      </button>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="s-panel" id="results-panel" style="display:none">
+      <div class="s-head">Αποτελέσματα</div>
+      <div id="results-body"></div>
+      <button class="btn-clr" onclick="clearSimulation()">✕ Εκκαθάριση</button>
+    </div>
+
+    <!-- ALERT LOG -->
+    <div class="s-panel">
+      <div class="s-head">Ιστορικό Ειδοποιήσεων</div>
+      <div id="alert-log"><div style="font-size:11px;color:var(--muted)">Δεν υπάρχουν ειδοποιήσεις</div></div>
+    </div>
+
+    <div class="s-foot">
+      Ηράκλειο Κρήτης · 35°20′N 25°08′E<br>
+      <span id="last-upd" style="color:rgba(255,255,255,0.15)">Smart City Digital Twin v2.0</span>
+    </div>
+  </div>
+
+  <div id="map-wrap">
+    <div id="map-area">
+      <div id="map-canvas"></div>
+      <div id="loader">
+        <div style="text-align:center">
+          <div class="spin"></div>
+          <div style="margin-top:10px;font-size:12px;color:var(--muted)">Φόρτωση χάρτη…</div>
+        </div>
+      </div>
+      <div id="legend">
+        <div class="leg-head">Υπόμνημα</div>
+        <div class="leg-row"><div class="leg-dot" style="background:#ef4444"></div><span class="leg-lbl">Υψηλός κίνδυνος</span></div>
+        <div class="leg-row"><div class="leg-dot" style="background:#f59e0b"></div><span class="leg-lbl">Μέτριος κίνδυνος</span></div>
+        <div class="leg-row"><div class="leg-dot" style="background:#22c55e"></div><span class="leg-lbl">Χαμηλός κίνδυνος</span></div>
+        <div class="leg-sep"></div>
+        <div class="leg-row"><div class="leg-sq" style="background:#3b82f6"></div><span class="leg-lbl">Ζώνη πλημμύρας</span></div>
+        <div class="leg-row"><div class="leg-sq" style="background:#a855f7"></div><span class="leg-lbl">Πλέγμα κινδύνου</span></div>
+      </div>
+      <div id="notif"><div class="notif-t" id="notif-t"></div><div class="notif-b" id="notif-b"></div></div>
+    </div>
+
+    <div id="sv-panel">
+      <button id="sv-close" onclick="closeSV()">✕</button>
+      <div id="sv-pano"></div>
+      <div id="sv-nocov">
+        <div style="font-size:22px">📷</div>
+        <div>Δεν υπάρχει Street View<br>για αυτή την τοποθεσία</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BACKEND   = 'https://municipality-backend-production.up.railway.app';
+const HERAKLION = { lat: 35.3387, lng: 25.1442 };
+
+let map = null;
+let allReports = [];
+const layers = { heatmap:[], flood:[], roads:[], simulation:[], grid:[] };
+
+// Road waypoints for vehicle simulation
+const ROADS = [
+  [{lat:35.3387,lng:25.075},{lat:35.3388,lng:25.095},{lat:35.3389,lng:25.115},{lat:35.3390,lng:25.135},{lat:35.3391,lng:25.155}],
+  [{lat:35.346,lng:25.128},{lat:35.343,lng:25.131},{lat:35.340,lng:25.134},{lat:35.337,lng:25.137}],
+  [{lat:35.339,lng:25.144},{lat:35.330,lng:25.145},{lat:35.320,lng:25.146},{lat:35.310,lng:25.147}],
+  [{lat:35.322,lng:25.090},{lat:35.328,lng:25.100},{lat:35.334,lng:25.110},{lat:35.340,lng:25.120}],
+  [{lat:35.347,lng:25.124},{lat:35.345,lng:25.128},{lat:35.343,lng:25.132},{lat:35.341,lng:25.136}],
+  [{lat:35.335,lng:25.110},{lat:35.337,lng:25.120},{lat:35.339,lng:25.130},{lat:35.341,lng:25.140}],
+  [{lat:35.328,lng:25.105},{lat:35.331,lng:25.115},{lat:35.334,lng:25.125},{lat:35.337,lng:25.135}],
+  [{lat:35.325,lng:25.115},{lat:35.326,lng:25.125},{lat:35.327,lng:25.135},{lat:35.328,lng:25.145}],
+];
+
+// Risk grid scores [row][col] — 6×8 covering Heraklion
+const GRID_SCORES = [
+  [22,28,42,52,38,32,20,14],
+  [32,48,62,72,58,44,28,18],
+  [38,58,78,88,68,52,38,24],
+  [34,52,68,76,62,48,36,20],
+  [24,38,52,60,48,38,26,16],
+  [16,26,36,44,34,26,18,12],
+];
+const GSOUTH = 35.302, GWEST = 25.064, GDLAT = 0.0065, GDLNG = 0.012;
+
+// ── INIT ────────────────────────────────────────────────────
+function initMap() {
+  map = new google.maps.Map(document.getElementById('map-canvas'), {
+    center: HERAKLION, zoom: 15, mapTypeId: 'satellite', tilt: 45, heading: 0,
+    mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+    zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+  });
+
+  map.addListener('tilesloaded', () => {
+    document.getElementById('loader').style.display = 'none';
+    setStatus('Live','#4ade80','rgba(34,197,94,0.18)','rgba(34,197,94,0.3)');
+  });
+
+  map.addListener('click', onMapClick);
+
+  loadReports();
+  buildFloodZones();
+  buildRoadRisks();
+  buildRiskGrid();
+  initVehicleOverlay();
+  refreshStats();
+  setInterval(refreshStats, 30000);
+
+  notify('Digital Twin v2.0','Νέα: Κυκλοφορία live, προσομοίωση οχημάτων, Street View, πλέγμα κινδύνου.');
+}
+
+// ── STATUS ──────────────────────────────────────────────────
+function setStatus(t,c,bg,bc) {
+  const el = document.getElementById('status-badge');
+  el.textContent = t; el.style.color = c; el.style.background = bg; el.style.borderColor = bc;
+}
+
+// ── TOAST ───────────────────────────────────────────────────
+let _nt = null;
+function notify(title, body, ms=4500) {
+  clearTimeout(_nt);
+  document.getElementById('notif-t').textContent = title;
+  document.getElementById('notif-b').textContent = body;
+  const el = document.getElementById('notif');
+  el.style.display = 'block';
+  _nt = setTimeout(() => { el.style.display='none'; }, ms);
+}
+
+// ── HELPERS ─────────────────────────────────────────────────
+function toArr(d) {
+  if (Array.isArray(d)) return d;
+  if (d && typeof d === 'object') {
+    if (d.data)  return toArr(d.data);
+    if (d.items) return toArr(d.items);
+    return Object.values(d).filter(v => v && typeof v === 'object');
+  }
+  return [];
+}
+function riskColor(r) {
+  const s = (r||'').toLowerCase();
+  if (s==='high'||s==='υψηλός')   return '#ef4444';
+  if (s==='medium'||s==='μέτριος') return '#f59e0b';
+  return '#22c55e';
+}
+function toggleLayer(name, on) {
+  layers[name].forEach(o => o.setMap(on ? map : null));
+}
+
+// ── TRAFFIC LAYER ────────────────────────────────────────────
+let trafficLayer = null;
+function toggleTraffic(on) {
+  if (on) { if (!trafficLayer) trafficLayer = new google.maps.TrafficLayer(); trafficLayer.setMap(map); }
+  else trafficLayer?.setMap(null);
+}
+
+// ── INFO WINDOW (map click) ──────────────────────────────────
+let infoWin = null;
+function onMapClick(e) {
+  const lat = e.latLng.lat(), lng = e.latLng.lng();
+  const nearby = allReports.filter(r => {
+    if (!r.latitude||!r.longitude) return false;
+    const dy=(r.latitude-lat)*111000, dx=(r.longitude-lng)*111000*Math.cos(lat*Math.PI/180);
+    return Math.sqrt(dy*dy+dx*dx)<300;
+  });
+  const sc = getGridScore(lat, lng);
+  const scColor = sc>60?'#f87171':sc>35?'#fbbf24':'#4ade80';
+  const html = `<div style="background:#132237;color:#e2e8f0;padding:11px 13px;border-radius:8px;min-width:190px;font-family:system-ui,sans-serif;font-size:12px">
+    <div style="font-size:11px;font-weight:700;color:#7dd3fc;margin-bottom:7px">📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+    <div style="margin-bottom:4px">Κοντινές αναφορές: <b style="color:#fff">${nearby.length}</b></div>
+    <div style="margin-bottom:8px">Σκορ κινδύνου: <b style="color:${scColor}">${sc}/100</b></div>
+    <button onclick="openSV(new google.maps.LatLng(${lat},${lng}))" style="width:100%;padding:5px;background:#2E86AB;border:none;border-radius:5px;color:#fff;font-size:11px;cursor:pointer">📷 Άνοιγμα Street View</button>
+  </div>`;
+  if (!infoWin) infoWin = new google.maps.InfoWindow();
+  infoWin.setContent(html);
+  infoWin.setPosition(e.latLng);
+  infoWin.open(map);
+}
+
+// ── STREET VIEW ──────────────────────────────────────────────
+let svPano = null;
+function openSV(latLng) {
+  const panel = document.getElementById('sv-panel');
+  const panoEl = document.getElementById('sv-pano');
+  const noEl   = document.getElementById('sv-nocov');
+  panel.classList.add('open');
+  noEl.style.display = 'none'; panoEl.style.display = 'block';
+  const svc = new google.maps.StreetViewService();
+  svc.getPanorama({ location: latLng, radius: 120 }, (data, status) => {
+    if (status === google.maps.StreetViewStatus.OK) {
+      if (!svPano) {
+        svPano = new google.maps.StreetViewPanorama(panoEl, {
+          pano: data.location.pano, visible: true,
+          addressControl: false, showRoadLabels: false, zoomControl: false,
+        });
+      } else {
+        svPano.setPano(data.location.pano);
+        svPano.setVisible(true);
+      }
+    } else {
+      panoEl.style.display = 'none';
+      noEl.style.display = 'flex';
+    }
+  });
+}
+function closeSV() {
+  document.getElementById('sv-panel').classList.remove('open');
+  svPano?.setVisible(false);
+  infoWin?.close();
+}
+
+// ── REPORTS + HEATMAP ANIMATION ──────────────────────────────
+let hmSlots = [], hmHour = 0, hmPlaying = false, hmTimer = null, hmLayer = null;
+
+async function loadReports() {
+  try {
+    const res = await fetch(`${BACKEND}/reports/`);
+    const raw = await res.json();
+    allReports = toArr(raw).filter(r => r.latitude && r.longitude);
+    document.getElementById('stat-reports').textContent = allReports.length;
+    const base = allReports.map(r => ({
+      location: new google.maps.LatLng(r.latitude, r.longitude),
+      w: r.severity==='high'?3:r.severity==='medium'?2:1,
+    }));
+    // 24 hourly variants
+    hmSlots = Array.from({length:24}, (_,h) => {
+      const f = h>=7&&h<=9?2.2 : h>=17&&h<=19?2.5 : h>=22||h<=5?0.3 : 1.0;
+      return base.map(d => ({ location:d.location, weight: d.w*f*(0.7+Math.random()*0.6) }));
+    });
+    hmLayer = new google.maps.visualization.HeatmapLayer({
+      data: hmSlots[0]||base, map, radius:28, opacity:0.82,
+      gradient:['rgba(0,0,0,0)','rgba(34,197,94,0.6)','rgba(234,179,8,0.8)','rgba(249,115,22,0.9)','rgba(239,68,68,1)'],
+    });
+    layers.heatmap = [hmLayer];
+  } catch(e) {
+    console.warn('Reports:', e.message);
+    document.getElementById('stat-reports').textContent = '0';
+  }
+}
+
+function setHmHour(h) {
+  hmHour = h;
+  document.getElementById('hm-lbl').textContent = String(h).padStart(2,'0')+':00';
+  document.getElementById('hm-bar').style.width = (h/23*100)+'%';
+  document.getElementById('hm-sl').value = h;
+  if (hmLayer && hmSlots[h]) hmLayer.setData(hmSlots[h]);
+}
+
+function toggleHmAnim() {
+  hmPlaying = !hmPlaying;
+  document.getElementById('hm-btn').textContent = hmPlaying ? '⏸' : '▶';
+  if (hmPlaying) {
+    hmTimer = setInterval(() => setHmHour((hmHour+1)%24), 500);
+  } else {
+    clearInterval(hmTimer);
+  }
+}
+
+// ── FLOOD ZONES ──────────────────────────────────────────────
+function buildFloodZones() {
+  const zones = [
+    [{lat:35.344,lng:25.1285},{lat:35.3448,lng:25.135},{lat:35.3438,lng:25.1395},{lat:35.342,lng:25.14},{lat:35.3408,lng:25.136},{lat:35.3408,lng:25.1295},{lat:35.3422,lng:25.127}],
+    [{lat:35.3205,lng:25.088},{lat:35.324,lng:25.0945},{lat:35.3218,lng:25.1005},{lat:35.3175,lng:25.0998},{lat:35.3155,lng:25.093},{lat:35.3168,lng:25.0875}],
+    [{lat:35.3355,lng:25.058},{lat:35.3388,lng:25.0672},{lat:35.337,lng:25.0758},{lat:35.3325,lng:25.0745},{lat:35.3298,lng:25.066},{lat:35.3312,lng:25.0582}],
+    [{lat:35.3465,lng:25.1235},{lat:35.3482,lng:25.1318},{lat:35.3465,lng:25.1388},{lat:35.3445,lng:25.1345},{lat:35.3448,lng:25.1237}],
+  ];
+  zones.forEach(paths => {
+    layers.flood.push(new google.maps.Polygon({
+      paths, map:null, fillColor:'#3b82f6', fillOpacity:0.22,
+      strokeColor:'#60a5fa', strokeOpacity:0.75, strokeWeight:2,
+    }));
+  });
+}
+
+// ── ROAD RISKS ───────────────────────────────────────────────
+function buildRoadRisks() {
+  const pts = [
+    {lat:35.3382,lng:25.1052,risk:'high'},{lat:35.3315,lng:25.1185,risk:'medium'},
+    {lat:35.3452,lng:25.1395,risk:'high'},{lat:35.3558,lng:25.1508,risk:'medium'},
+    {lat:35.3272,lng:25.1382,risk:'low'},{lat:35.3418,lng:25.1622,risk:'medium'},
+    {lat:35.3492,lng:25.1282,risk:'high'},{lat:35.3342,lng:25.0952,risk:'low'},
+    {lat:35.3608,lng:25.1345,risk:'medium'},{lat:35.3228,lng:25.1068,risk:'high'},
+  ];
+  pts.forEach(pt => {
+    const col=riskColor(pt.risk), r=pt.risk==='high'?85:pt.risk==='medium'?55:35, op=pt.risk==='high'?0.52:pt.risk==='medium'?0.40:0.28;
+    layers.roads.push(new google.maps.Circle({
+      center:{lat:pt.lat,lng:pt.lng}, radius:r, map:null,
+      fillColor:col, fillOpacity:op, strokeColor:col, strokeOpacity:0.9, strokeWeight:1.5,
+    }));
+  });
+}
+
+// ── RISK GRID ────────────────────────────────────────────────
+function buildRiskGrid() {
+  for (let r=0;r<6;r++) {
+    for (let c=0;c<8;c++) {
+      const sc = GRID_SCORES[r][c];
+      const col = sc>60?'#ef4444':sc>35?'#f59e0b':'#22c55e';
+      const s={lat:GSOUTH+r*GDLAT, lng:GWEST+c*GDLNG};
+      const rect = new google.maps.Rectangle({
+        bounds:{north:s.lat+GDLAT,south:s.lat,east:s.lng+GDLNG,west:s.lng}, map:null,
+        fillColor:col, fillOpacity:0.15+(sc/100)*0.22,
+        strokeColor:col, strokeOpacity:0.35, strokeWeight:0.5,
+      });
+      rect.addListener('mouseover',()=>rect.setOptions({fillOpacity:0.45,strokeOpacity:0.8}));
+      rect.addListener('mouseout', ()=>rect.setOptions({fillOpacity:0.15+(sc/100)*0.22,strokeOpacity:0.35}));
+      rect.addListener('click', () => {
+        const mid = {lat:s.lat+GDLAT/2, lng:s.lng+GDLNG/2};
+        if (!infoWin) infoWin = new google.maps.InfoWindow();
+        infoWin.setContent(`<div style="background:#132237;color:#e2e8f0;padding:10px 12px;border-radius:7px;font-size:12px;font-family:system-ui,sans-serif"><b style="color:#7dd3fc">Κελί Πλέγματος</b><br><br>Σκορ: <b style="color:${col}">${sc}/100</b><br>Επίπεδο: <b>${sc>60?'ΥΨΗΛΟΣ':sc>35?'ΜΕΤΡΙΟΣ':'ΧΑΜΗΛΟΣ'}</b></div>`);
+        infoWin.setPosition(new google.maps.LatLng(mid.lat, mid.lng));
+        infoWin.open(map);
+      });
+      layers.grid.push(rect);
+    }
+  }
+}
+
+function getGridScore(lat, lng) {
+  const r=Math.floor((lat-GSOUTH)/GDLAT), c=Math.floor((lng-GWEST)/GDLNG);
+  if (r>=0&&r<6&&c>=0&&c<8) return GRID_SCORES[r][c];
+  return 20;
+}
+
+// ── VEHICLE SIMULATION ───────────────────────────────────────
+let vehOverlay = null;
+
+function initVehicleOverlay() {
+  const VO = class extends google.maps.OverlayView {
+    constructor() {
+      super();
+      this.vehs=[]; this.running=false; this.rafId=null;
+      this.speed=1; this.mode='normal';
+      this.canvas=null; this.ctx=null; this._ox=0; this._oy=0;
+    }
+    onAdd() {
+      this.canvas = document.createElement('canvas');
+      this.canvas.style.cssText='position:absolute;top:0;left:0;pointer-events:none;';
+      this.getPanes().overlayLayer.appendChild(this.canvas);
+      this.ctx = this.canvas.getContext('2d');
+      this.buildVehs(500);
+    }
+    buildVehs(n) {
+      this.vehs = Array.from({length:n}, () => ({
+        pi: Math.floor(Math.random()*ROADS.length),
+        t:  Math.random(),
+        spd: 0.00015 + Math.random()*0.00025,
+        dir: Math.random()>.5?1:-1,
+      }));
+    }
+    draw() {
+      const proj=this.getProjection(), bounds=map.getBounds();
+      if (!bounds||!proj) return;
+      const sw=proj.fromLatLngToDivPixel(bounds.getSouthWest());
+      const ne=proj.fromLatLngToDivPixel(bounds.getNorthEast());
+      const l=Math.round(sw.x), t=Math.round(ne.y);
+      this.canvas.style.left=l+'px'; this.canvas.style.top=t+'px';
+      this.canvas.width=Math.round(ne.x-sw.x);
+      this.canvas.height=Math.round(sw.y-ne.y);
+      this._ox=-l; this._oy=-t;
+    }
+    onRemove() { this.canvas?.parentNode?.removeChild(this.canvas); }
+    tick() {
+      if (!this.running) return;
+      const proj=this.getProjection();
+      if (!proj) { this.rafId=requestAnimationFrame(()=>this.tick()); return; }
+      const ctx=this.ctx, w=this.canvas.width, h=this.canvas.height;
+      ctx.clearRect(0,0,w,h);
+      let vis=0;
+      for (const v of this.vehs) {
+        v.t += v.spd * this.speed * v.dir;
+        if (v.t>=1){v.t=0.99;v.dir=-1;} if(v.t<=0){v.t=0.01;v.dir=1;}
+        const pos=interpPath(ROADS[v.pi],v.t);
+        const px=proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat,pos.lng));
+        if (!px) continue;
+        const x=px.x+this._ox, y=px.y+this._oy;
+        if (x<-5||y<-5||x>w+5||y>h+5) continue;
+        vis++;
+        const m=this.mode;
+        const col=m==='rush'?(v.spd>0.00028?'#ef4444':'#f59e0b'):m==='emergency'?(v.pi%3===0?'#60a5fa':'#ef4444'):'#4ade80';
+        ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2);
+        ctx.fillStyle=col; ctx.fill();
+      }
+      const tot=10000+vis*18;
+      const avgSpd=this.mode==='rush'?18+Math.round(Math.random()*8):this.mode==='emergency'?58+Math.round(Math.random()*18):42+Math.round(Math.random()*15);
+      const cong=this.mode==='rush'?'78%':this.mode==='emergency'?'45%':`${25+Math.round(Math.random()*15)}%`;
+      document.getElementById('vc-count').textContent=tot.toLocaleString('el-GR');
+      document.getElementById('vc-spd').textContent=avgSpd;
+      document.getElementById('vc-cong').textContent=cong;
+      this.rafId=requestAnimationFrame(()=>this.tick());
+    }
+    start() { this.running=true; this.tick(); document.getElementById('btn-vs').classList.add('on'); }
+    stop()  {
+      this.running=false; cancelAnimationFrame(this.rafId);
+      this.ctx?.clearRect(0,0,this.canvas?.width||0,this.canvas?.height||0);
+      document.getElementById('btn-vs').classList.remove('on');
+      document.getElementById('vc-count').textContent='0';
+      document.getElementById('vc-spd').textContent='—';
+      document.getElementById('vc-cong').textContent='—';
+    }
+  };
+  vehOverlay = new VO();
+  vehOverlay.setMap(map);
+}
+
+function interpPath(path, t) {
+  const n=path.length-1, seg=Math.min(Math.floor(t*n),n-1), st=(t*n)-seg;
+  const a=path[seg], b=path[seg+1];
+  return {lat:a.lat+(b.lat-a.lat)*st, lng:a.lng+(b.lng-a.lng)*st};
+}
+
+function startVeh()  { vehOverlay?.start(); }
+function stopVeh()   { vehOverlay?.stop(); }
+function resetVeh()  { vehOverlay?.stop(); vehOverlay?.buildVehs(500); }
+function setVehSpeed(v) { document.getElementById('v-vs').textContent=v; if(vehOverlay) vehOverlay.speed=+v; }
+function setVehMode(m)  { if(vehOverlay) vehOverlay.mode=m; }
+
+// ── REAL-TIME STATS (30s) ────────────────────────────────────
+async function refreshStats() {
+  try {
+    const [rr, ar] = await Promise.allSettled([
+      fetch(`${BACKEND}/reports/`).then(r=>r.json()),
+      fetch(`${BACKEND}/appointments/`).then(r=>r.json()),
+    ]);
+    if (rr.status==='fulfilled') {
+      const rpts=toArr(rr.value);
+      document.getElementById('stat-reports').textContent=rpts.length;
+      allReports=rpts.filter(r=>r.latitude&&r.longitude);
+    }
+    if (ar.status==='fulfilled') {
+      document.getElementById('stat-appts').textContent=toArr(ar.value).length;
+    }
+    document.getElementById('last-upd').textContent='Ανανεώθηκε: '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'});
+  } catch(e) { console.warn('Stats refresh:', e); }
+}
+
+// ── ALERT SYSTEM ─────────────────────────────────────────────
+const alertLog = [];
+function triggerAlert(msg, level='high') {
+  const time=new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'});
+  alertLog.unshift({msg,level,time});
+  if (alertLog.length>10) alertLog.pop();
+  renderAlerts();
+  if (level==='high') {
+    document.getElementById('alert-msg').textContent='🚨 '+msg;
+    document.getElementById('alert-banner').classList.add('show');
+    setTimeout(()=>document.getElementById('alert-banner').classList.remove('show'),8000);
+  }
+}
+function renderAlerts() {
+  const el=document.getElementById('alert-log');
+  if (!alertLog.length) { el.innerHTML='<div style="font-size:11px;color:var(--muted)">Δεν υπάρχουν ειδοποιήσεις</div>'; return; }
+  el.innerHTML=alertLog.map(a=>`<div class="al-item"><span class="al-time">${a.time}</span><div class="al-msg" style="color:${a.level==='high'?'#f87171':a.level==='medium'?'#fbbf24':'#4ade80'}">${a.msg}</div></div>`).join('');
+}
+
+// ── FLOOD SIMULATION ─────────────────────────────────────────
+async function runSimulation() {
+  const btn=document.getElementById('sim-btn');
+  const mm=+document.getElementById('sl-rain').value;
+  const hr=+document.getElementById('sl-dur').value;
+  btn.disabled=true;
+  btn.innerHTML='<div class="spin" style="width:12px;height:12px;border-width:2px;margin:0"></div>&nbsp;Εκτέλεση…';
+  clearSimulation(false);
+  try {
+    const res=await fetch(`${BACKEND}/digital-twin/simulate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scenario:'flood',rainfall_mm:mm,duration_hours:hr})});
+    let data={}; try{data=await res.json();}catch{}
+    const raw=data.affected_areas||data.zones||data.risk_points||data.results||data.data||data.areas||[];
+    const areas=toArr(raw);
+    const cnt={high:0,medium:0,low:0};
+    if (areas.length>0) {
+      areas.forEach(a=>{
+        const lat=parseFloat(a.lat||a.latitude||a.y||0);
+        const lng=parseFloat(a.lng||a.longitude||a.x||0);
+        const risk=(a.risk||a.risk_level||a.severity||'medium').toLowerCase();
+        if(lat&&lng) addSimCircle(lat,lng,risk,cnt);
+      });
+    } else {
+      const intensity=mm/200, nPts=Math.round(6+intensity*14), seed=mm*31+hr*7;
+      for (let i=0;i<nPts;i++){
+        const r1=((seed+i*127)%1000)/1000-0.5, r2=((seed+i*311)%1000)/1000-0.5;
+        const lat=HERAKLION.lat+r1*0.028, lng=HERAKLION.lng+r2*0.028;
+        const t=((seed+i*53)%100)/100;
+        const risk=intensity>0.55?(t<0.45?'high':t<0.78?'medium':'low'):intensity>0.25?(t<0.15?'high':t<0.55?'medium':'low'):(t<0.05?'high':t<0.28?'medium':'low');
+        addSimCircle(lat,lng,risk,cnt);
+      }
+    }
+    document.getElementById('stat-zones').textContent=layers.simulation.length;
+    const tot=cnt.high+cnt.medium+cnt.low;
+    const overall=cnt.high>=3?'high':cnt.medium>tot*0.4?'medium':'low';
+    const riskSc=Math.round((cnt.high*85+cnt.medium*50+cnt.low*20)/(tot||1));
+    if (riskSc>70) triggerAlert(`Πλημμύρα υψηλού κινδύνου! ${mm}mm βροχής, ${cnt.high} ζώνες υψηλού κινδύνου.`,'high');
+    else if (riskSc>40) triggerAlert(`Μέτριος κίνδυνος πλημμύρας — ${cnt.medium} ζώνες επηρεάζονται.`,'medium');
+    document.getElementById('results-body').innerHTML=`
+      <div class="r-stat"><span class="r-lbl">Γενικός κίνδυνος</span><span class="badge badge-${overall}">${{high:'ΥΨΗΛΟΣ',medium:'ΜΕΤΡΙΟΣ',low:'ΧΑΜΗΛΟΣ'}[overall]}</span></div>
+      <div class="r-stat"><span class="r-lbl">Σκορ κινδύνου</span><span class="r-val">${riskSc}/100</span></div>
+      <div class="r-stat"><span class="r-lbl">Υψηλός κίνδυνος</span><span class="r-val" style="color:#f87171">${cnt.high} ζώνες</span></div>
+      <div class="r-stat"><span class="r-lbl">Μέτριος κίνδυνος</span><span class="r-val" style="color:#fbbf24">${cnt.medium} ζώνες</span></div>
+      <div class="r-stat"><span class="r-lbl">Χαμηλός κίνδυνος</span><span class="r-val" style="color:#4ade80">${cnt.low} ζώνες</span></div>
+      <div class="r-stat"><span class="r-lbl">Βροχόπτωση / Διάρκεια</span><span class="r-val">${mm}mm / ${hr}h</span></div>`;
+    document.getElementById('results-panel').style.display='block';
+    map.panTo(HERAKLION); if(layers.simulation.length>0) map.setZoom(14);
+    notify('Προσομοίωση Ολοκληρώθηκε',`${layers.simulation.length} ζώνες — σκορ: ${riskSc}/100`,5500);
+  } catch(err) {
+    notify('Σφάλμα',err.message,5000);
+  } finally {
+    btn.disabled=false;
+    btn.innerHTML='<svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M3 2l7 4-7 4V2z"/></svg> Εκτέλεση Προσομοίωσης';
+  }
+}
+
+function addSimCircle(lat,lng,risk,cnt) {
+  const col=riskColor(risk), r=risk==='high'?185:risk==='medium'?125:75, op=risk==='high'?0.58:risk==='medium'?0.44:0.30;
+  layers.simulation.push(new google.maps.Circle({
+    center:{lat,lng}, radius:r, map,
+    fillColor:col, fillOpacity:op, strokeColor:col, strokeOpacity:0.8, strokeWeight:1.5,
+  }));
+  cnt[risk in cnt?risk:'low']++;
+}
+
+function clearSimulation(resetPanel=true) {
+  layers.simulation.forEach(o=>o.setMap(null)); layers.simulation=[];
+  document.getElementById('stat-zones').textContent='—';
+  if (resetPanel) { document.getElementById('results-panel').style.display='none'; map.setZoom(15); }
+}
+
+// ── PDF EXPORT ───────────────────────────────────────────────
+function exportPDF() {
+  const reports=document.getElementById('stat-reports').textContent;
+  const appts  =document.getElementById('stat-appts').textContent;
+  const zones  =document.getElementById('stat-zones').textContent;
+  const time   =new Date().toLocaleString('el-GR');
+  const res    =document.getElementById('results-panel').style.display!=='none'?document.getElementById('results-body').innerHTML:'<p style="color:#666">Δεν έχει εκτελεστεί προσομοίωση.</p>';
+  const alerts =alertLog.length?alertLog.map(a=>`<tr><td>${a.time}</td><td style="color:${a.level==='high'?'#c00':a.level==='medium'?'#a60':'#060'}">${a.msg}</td></tr>`).join(''):'<tr><td colspan="2">Δεν υπάρχουν ειδοποιήσεις</td></tr>';
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Digital Twin Report</title>
+  <style>body{font-family:Arial,sans-serif;padding:30px;color:#222}h1{color:#1E3A5F;border-bottom:2px solid #1E3A5F;padding-bottom:8px;margin-bottom:16px}h2{color:#1E3A5F;font-size:14px;margin:20px 0 8px}table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px}td,th{padding:7px 11px;border:1px solid #ddd}th{background:#1E3A5F;color:#fff}.stats{display:flex;gap:16px;margin:16px 0}.sb{flex:1;border:1px solid #ddd;border-radius:6px;padding:12px;text-align:center}.sn{font-size:22px;font-weight:700;color:#1E3A5F}.sl{font-size:11px;color:#666;margin-top:2px}.btn-p{margin-top:16px;padding:9px 20px;background:#1E3A5F;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}@media print{.btn-p{display:none}}</style>
+  </head><body>
+  <h1>🏙️ Digital Twin — Δήμος Ηρακλείου</h1>
+  <p style="color:#666;font-size:12px;margin-bottom:12px">Εξαγωγή: ${time}</p>
+  <div class="stats">
+    <div class="sb"><div class="sn">${reports}</div><div class="sl">Αναφορές</div></div>
+    <div class="sb"><div class="sn">${appts}</div><div class="sl">Ραντεβού</div></div>
+    <div class="sb"><div class="sn">${zones}</div><div class="sl">Ζώνες Κινδύνου</div></div>
+  </div>
+  <h2>Αποτελέσματα Προσομοίωσης</h2>
+  <div style="border:1px solid #ddd;border-radius:6px;padding:12px">${res}</div>
+  <h2>Ιστορικό Ειδοποιήσεων</h2>
+  <table><tr><th>Ώρα</th><th>Μήνυμα</th></tr>${alerts}</table>
+  <button class="btn-p" onclick="window.print()">🖨 Εκτύπωση PDF</button>
+  </body></html>`);
+  w.document.close();
+}
+</script>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAciHi84ko96d8w1SlgJBsoKofTIxIYCDU&libraries=visualization&callback=initMap" async defer></script>
+</body>
+</html>

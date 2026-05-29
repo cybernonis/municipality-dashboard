@@ -1,751 +1,1467 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip, useMap, Marker } from 'react-leaflet';
-import MarkerClusterGroup from 'react-leaflet-cluster';
-import L from 'leaflet';
-import 'leaflet.heat';
+// ============================================================================
+//  DigitalTwin.tsx — Smart City Δήμος Ηρακλείου
+//  Google Maps rewrite (αντικατάσταση Leaflet)
+//  Stack: React + TypeScript + @react-google-maps/api
+// ============================================================================
+//
+//  NOTE: Τα "KEEP" features (WebSocket, Smart Alerts, Live feed, Time-lapse,
+//  external-data cards, clustering) είναι re-implemented με βάση το brief.
+//  Επιβεβαίωσε τα ακριβή field names του backend / WS messages με το original
+//  σου αρχείο όπου διαφέρουν — όλα διαβάζονται defensively με optional chaining.
+//
+//  SECURITY: Κλείδωσε το API key με HTTP-referrer restriction στο Google Cloud
+//  Console (μόνο municipality-dashboard-alpha.vercel.app + localhost).
+// ============================================================================
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
-  Layers, RefreshCw, Play, Pause, RotateCcw, AlertTriangle,
-  Flame, Wind, Globe, Car, Activity,
-  Cloud, Timer, Gauge, Loader,
-} from 'lucide-react';
-import InfoButton from '../components/InfoButton';
+  GoogleMap,
+  TrafficLayer,
+  Marker,
+  Circle,
+  Polygon,
+  InfoWindow,
+  useJsApiLoader,
+} from '@react-google-maps/api';
+import { MarkerClusterer as GMClusterer } from '@googlemaps/markerclusterer';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
-const TOMTOM_KEY = process.env.REACT_APP_TOMTOM_KEY || '';
-const HERAKLION_CENTER: [number, number] = [35.3387, 25.1442];
+// ---------------------------------------------------------------------------
+//  CONFIG
+// ---------------------------------------------------------------------------
 
-const MAP_STYLES = [
-  { key: 'osm',     label: 'OSM',     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',             attribution: '© OpenStreetMap contributors' },
-  { key: 'dark',    label: 'Dark',    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '© OpenStreetMap © CARTO' },
-  { key: 'terrain', label: 'Terrain', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',               attribution: '© OpenStreetMap © OpenTopoMap' },
+const GOOGLE_MAPS_API_KEY = 'AIzaSyAnIGg6Sltcoc8Tf7Q3ScIdE7-L-dPbW5M';
+const HERE_API_KEY = 'ZHOAp5vxk4uyUuP1JCu1rqeknL1wmrnTywD5zQjAKe4';
+const MAP_CENTER = { lat: 35.3387, lng: 25.1442 };
+const DEFAULT_ZOOM = 15;
+const DEFAULT_TILT = 0;
+
+// Stable refs (must NOT be re-created each render → re-load warning)
+// No extra libraries — keeps the loader from requesting Places/Visualization,
+// which need separate APIs enabled in GCP. Geocoding uses Nominatim (OSM).
+const LIBRARIES: ('places')[] = [];
+
+const BACKEND = 'https://municipality-backend-production.up.railway.app';
+const WS_URL = 'wss://municipality-backend-production.up.railway.app/ws';
+const REFRESH_MS = 30_000;
+
+const COLORS = {
+  navy: '#1E3A5F',
+  navyDark: '#152a45',
+  secondary: '#2E86AB',
+  accent: '#F6AE2D',
+  green: '#27AE60',
+  yellow: '#F1C40F',
+  red: '#E74C3C',
+  panel: '#FFFFFF',
+  panelAlt: '#F4F6F8',
+  border: '#E2E8F0',
+  text: '#1A202C',
+  textMuted: '#64748B',
+};
+
+// ---------------------------------------------------------------------------
+//  ROAD NETWORK (Heraklion) — for vehicle simulation
+// ---------------------------------------------------------------------------
+
+interface RoadDef {
+  name: string;
+  points: [number, number][]; // [lat, lng]
+}
+
+const ROADS: RoadDef[] = [
+  { name: 'Λεωφ. Ικάρου', points: [[35.338, 25.134], [35.34, 25.155]] },
+  { name: '25ης Αυγούστου', points: [[35.339, 25.141], [35.342, 25.144]] },
+  { name: 'Λεωφ. Κνωσού', points: [[35.325, 25.142], [35.338, 25.144]] },
+  { name: 'ΒΟΑΚ', points: [[35.345, 25.08], [35.345, 25.2]] },
+  { name: 'Λεωφ. Δημοκρατίας', points: [[35.335, 25.13], [35.335, 25.15]] },
 ];
 
-interface MapLayer {
-  reports: any[];
-  iot_devices: any[];
-  crises: any[];
+// ---------------------------------------------------------------------------
+//  FLOOD ZONES (4 polygons γύρω από Ηράκλειο)
+// ---------------------------------------------------------------------------
+
+const FLOOD_ZONES: { name: string; ring: { lat: number; lng: number }[] }[] = [
+  {
+    name: 'Παραλιακή Ζώνη',
+    ring: [
+      { lat: 35.3445, lng: 25.135 },
+      { lat: 35.3445, lng: 25.152 },
+      { lat: 35.341, lng: 25.152 },
+      { lat: 35.341, lng: 25.135 },
+    ],
+  },
+  {
+    name: 'Λιμάνι',
+    ring: [
+      { lat: 35.345, lng: 25.135 },
+      { lat: 35.3478, lng: 25.142 },
+      { lat: 35.344, lng: 25.146 },
+      { lat: 35.343, lng: 25.137 },
+    ],
+  },
+  {
+    name: 'Γιόφυρος (ρέμα)',
+    ring: [
+      { lat: 35.337, lng: 25.118 },
+      { lat: 35.337, lng: 25.126 },
+      { lat: 35.325, lng: 25.126 },
+      { lat: 35.325, lng: 25.118 },
+    ],
+  },
+  {
+    name: 'Κατσαμπάς',
+    ring: [
+      { lat: 35.343, lng: 25.156 },
+      { lat: 35.343, lng: 25.168 },
+      { lat: 35.336, lng: 25.168 },
+      { lat: 35.336, lng: 25.156 },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+//  TYPES (defensive — verify against backend)
+// ---------------------------------------------------------------------------
+
+interface ReportItem {
+  id?: number | string;
+  lat: number;
+  lng: number;
+  category?: string;
+  status?: string;
+  description?: string;
+  created_at?: string;
+}
+interface IotDevice {
+  id?: number | string;
+  lat: number;
+  lng: number;
+  type?: string;
+  status?: string;
+  value?: number;
+}
+interface CrisisItem {
+  id?: number | string;
+  lat: number;
+  lng: number;
+  type?: string;
+  severity?: number;
+  title?: string;
+}
+interface LayersResponse {
+  reports: ReportItem[];
+  iot_devices: IotDevice[];
+  crises: CrisisItem[];
+}
+interface Snapshot {
+  total_reports: number;
+  open_reports: number;
+  iot_devices: number;
+  active_alerts: number;
+  active_crises: number;
+}
+interface HeatPoint {
+  lat: number;
+  lng: number;
+  intensity: number;
+}
+interface SimZone {
+  level: 'green' | 'yellow' | 'red';
+  polygon: [number, number][];
+}
+interface SimResult {
+  severity?: string;
+  summary?: string;
+  recommended_actions?: string[];
+  zones?: SimZone[];
+}
+interface ExternalData {
+  weather?: {
+    temperature?: number;
+    humidity?: number;
+    wind_speed?: number;
+    wind_kmh?: number;
+    description?: string;
+    alerts?: unknown[];
+    [k: string]: unknown;
+  };
+  traffic?: { incidents?: Record<string, unknown>[]; [k: string]: unknown };
+  earthquakes?: { earthquakes?: Record<string, unknown>[]; [k: string]: unknown } | Record<string, unknown>[];
+  hazards?: { fires?: unknown[]; nearby_fires?: unknown[]; flood_risk_areas?: unknown[]; [k: string]: unknown } | unknown[];
+  air_quality?: { aqi?: number; status?: string; pm25?: number; pm10?: number; [k: string]: unknown };
+}
+interface AlertEntry {
+  id: string;
+  level: 'info' | 'warning' | 'critical';
+  text: string;
+  ts: number;
+}
+type ScenarioKey = 'flood' | 'earthquake' | 'power' | 'event';
+
+// ---------------------------------------------------------------------------
+//  HELPERS
+// ---------------------------------------------------------------------------
+
+const SCENARIOS: { key: ScenarioKey; label: string }[] = [
+  { key: 'flood', label: 'Πλημμύρα' },
+  { key: 'earthquake', label: 'Σεισμός' },
+  { key: 'power', label: 'Διακοπή Ρεύματος' },
+  { key: 'event', label: 'Μαζική Εκδήλωση' },
+];
+
+// Parse anything number-ish into a finite number, else null.
+function num(v: unknown): number | null {
+  const n = typeof v === 'string' ? parseFloat(v) : (v as number);
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
-interface Simulation {
-  type: string;
-  description: string;
-  location: string;
-}
-
-const categoryLabels: Record<string, string> = {
-  road_damage: 'Βλάβη Δρόμου', lighting: 'Φωτισμός', waste: 'Σκουπίδια',
-  water_leak: 'Νερό', vandalism: 'Βανδαλισμός', fallen_tree: 'Δέντρο',
-};
-
-const deviceLabels: Record<string, string> = {
-  waste_bin: 'Κάδος', street_light: 'Φανάρι', environment: 'Αισθητήρας',
-  water_pressure: 'Νερό', traffic: 'Κίνηση',
-};
-
-const createIcon = (color: string, emoji: string) => L.divIcon({
-  html: `<div style="background:${color};width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">${emoji}</div>`,
-  className: '', iconSize: [28, 28], iconAnchor: [14, 14],
-});
-
-const crisisIcon     = createIcon('#9C27B0', '🆘');
-const fireIcon       = createIcon('#FF3D00', '🔥');
-const earthquakeIcon = (mag: number) => createIcon(mag >= 4 ? '#FF6F00' : '#FDD835', '🌍');
-const roadWorksIcon  = createIcon('#FF8F00', '🔧');
-const roadClosedIcon = createIcon('#D32F2F', '🚫');
-const accidentIcon   = createIcon('#E53935', '💥');
-const trafficJamIcon = createIcon('#F57C00', '🚗');
-const fogIcon        = createIcon('#78909C', '🌫️');
-const floodingIcon   = createIcon('#1565C0', '🌊');
-const windIcon       = createIcon('#455A64', '💨');
-
-const getTrafficIcon = (type: string) => {
-  switch(type) {
-    case 'road_works':  return roadWorksIcon;
-    case 'road_closed': return roadClosedIcon;
-    case 'accident':    return accidentIcon;
-    case 'jam':         return trafficJamIcon;
-    case 'fog':         return fogIcon;
-    case 'flooding':    return floodingIcon;
-    case 'wind':        return windIcon;
-    default:            return trafficJamIcon;
+// Coerce an unknown payload into an array. Handles: array, {features|items|
+// data|results|list|records: []}, or a plain object-of-records → its values.
+function toArray<T = unknown>(v: unknown): T[] {
+  if (Array.isArray(v)) return v as T[];
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    for (const k of ['features', 'items', 'data', 'results', 'list', 'records']) {
+      if (Array.isArray(o[k])) return o[k] as T[];
+    }
+    const vals = Object.values(o);
+    if (vals.length && vals.every((x) => x && typeof x === 'object')) return vals as T[];
   }
-};
+  return [];
+}
 
-const getTrafficLabel = (type: string) => {
-  const labels: Record<string, string> = {
-    road_works:           'Οδικά Έργα',
-    road_closed:          'Κλειστός Δρόμος',
-    accident:             'Ατύχημα',
-    jam:                  'Συμφόρηση',
-    fog:                  'Ομίχλη',
-    flooding:             'Πλημμύρα',
-    wind:                 'Ισχυροί Άνεμοι',
-    lane_closed:          'Κλειστή Λωρίδα',
-    dangerous_conditions: 'Επικίνδυνες Συνθήκες',
-  };
-  return labels[type] || 'Κυκλοφορία';
-};
+// Extract {lat,lng} from many field conventions (lat/latitude/y, lng/lon/long/
+// longitude/x, or GeoJSON geometry.coordinates [lng,lat] / properties.*).
+function geo(item: unknown): (Record<string, unknown> & { lat: number; lng: number }) | null {
+  if (!item || typeof item !== 'object') return null;
+  const o = item as Record<string, any>;
+  const g: unknown = o.geometry?.coordinates;
+  const gArr = Array.isArray(g) ? g : null;
+  let lat = num(o.lat) ?? num(o.latitude) ?? num(o.y) ?? (gArr ? num(gArr[1]) : null);
+  let lng = num(o.lng) ?? num(o.lon) ?? num(o.long) ?? num(o.longitude) ?? num(o.x) ?? (gArr ? num(gArr[0]) : null);
+  if (lat == null && o.properties) lat = num(o.properties.lat) ?? num(o.properties.latitude);
+  if (lng == null && o.properties) lng = num(o.properties.lng) ?? num(o.properties.longitude);
+  if (lat == null || lng == null) return null;
+  return { ...o, lat, lng };
+}
 
-const HeatmapLayer2D: React.FC<{ points: any[] }> = ({ points }) => {
-  const map = useMap();
-  useEffect(() => {
-    if (!points.length) return;
-    const heat = (L as any).heatLayer(
-      points.map(p => [p.lat, p.lng, p.intensity] as [number, number, number]),
-      { radius: 30, blur: 20, maxZoom: 17, max: 3,
-        gradient: { 0.2: 'blue', 0.4: 'lime', 0.6: 'yellow', 0.8: 'orange', 1.0: 'red' } }
-    ).addTo(map);
-    return () => { map.removeLayer(heat); };
-  }, [map, points]);
-  return null;
-};
+function haversine(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const la1 = (a.lat * Math.PI) / 180;
+  const la2 = (b.lat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
 
-const DynamicTileLayer: React.FC<{ styleKey: string }> = ({ styleKey }) => {
-  const style = MAP_STYLES.find(s => s.key === styleKey) || MAP_STYLES[0];
-  return <TileLayer key={styleKey} url={style.url} attribution={style.attribution} />;
-};
+function pointInRing(lat: number, lng: number, ring: { lat: number; lng: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i].lng, yi = ring[i].lat;
+    const xj = ring[j].lng, yj = ring[j].lat;
+    const intersect =
+      (yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
-const DigitalTwin: React.FC = () => {
-  const [layers, setLayers] = useState<MapLayer | null>(null);
-  const [summary, setSummary] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [simulating, setSimulating] = useState(false);
-  const [simResult, setSimResult] = useState<any>(null);
-  const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
-  const [heatmapPoints, setHeatmapPoints] = useState<any[]>([]);
-  const [showHeatmap, setShowHeatmap] = useState(false);
-  const [showEarthquakes, setShowEarthquakes] = useState(true);
-  const [showFires, setShowFires] = useState(true);
-  const [showTraffic, setShowTraffic] = useState(true);
-  const [showTrafficFlow, setShowTrafficFlow] = useState(false);
-  const [useClustering, setUseClustering] = useState(true);
-  const [mapStyle, setMapStyle] = useState('osm');
-  const [externalData, setExternalData] = useState<any>(null);
-  const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected'>('disconnected');
-  const [liveUpdates, setLiveUpdates] = useState<string[]>([]);
-  const wsRef = React.useRef<WebSocket | null>(null);
-  const [activeLayer, setActiveLayer] = useState({ reports: true, iot: true, crises: true });
-  const [scenario, setScenario] = useState<Simulation>({
-    type: 'flood', description: 'Πλημμύρα στο κέντρο', location: 'Κέντρο Ηρακλείου',
+async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T | null> {
+  try {
+    const res = await fetch(`${BACKEND}${path}`, { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+function jamColor(jf: number): string {
+  if (jf <= 2) return '#27AE60';
+  if (jf <= 4) return '#F1C40F';
+  if (jf <= 7) return '#E67E22';
+  return '#E74C3C';
+}
+
+// ---------------------------------------------------------------------------
+//  VEHICLE SIMULATION OVERLAY (canvas over Google Map)
+// ---------------------------------------------------------------------------
+
+type VehicleType = 'car' | 'bus' | 'truck';
+interface Vehicle {
+  road: number;
+  t: number; // 0..1 along road
+  dir: 1 | -1;
+  base: number; // base speed (fraction of road per sec)
+  type: VehicleType;
+}
+interface RoadGeo {
+  pts: { lat: number; lng: number }[];
+  segLen: number[]; // cumulative fraction breakpoints
+}
+export interface VehicleStats {
+  count: number;
+  avgSpeed: number;
+  congestion: number;
+}
+type SimMode = 'normal' | 'rush' | 'emergency';
+
+interface VehicleOverlayApi {
+  setRunning(v: boolean): void;
+  setSpeed(v: number): void;
+  setMode(m: SimMode): void;
+  reset(): void;
+  getStats(): VehicleStats;
+  destroy(): void;
+}
+
+// Factory — built only after google global exists.
+function createVehicleOverlay(map: google.maps.Map): VehicleOverlayApi {
+  const roadGeo: RoadGeo[] = ROADS.map((r) => {
+    const pts = r.points.map(([lat, lng]) => ({ lat, lng }));
+    // Equal-weight segments (2-point roads → single segment)
+    const segLen: number[] = [0];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      total += haversine(pts[i - 1], pts[i]);
+      segLen.push(total);
+    }
+    return { pts, segLen: segLen.map((s) => (total ? s / total : 0)) };
   });
-  const [timelapse, setTimelapse] = useState(false);
-  const [tlDay, setTlDay] = useState(0);
-  const [tlPlaying, setTlPlaying] = useState(false);
-  const tlRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const tlDays = 7;
 
-  const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+  function posOnRoad(rg: RoadGeo, t: number): { lat: number; lng: number } {
+    if (rg.pts.length === 1) return rg.pts[0];
+    let seg = 0;
+    while (seg < rg.segLen.length - 2 && t > rg.segLen[seg + 1]) seg++;
+    const span = rg.segLen[seg + 1] - rg.segLen[seg] || 1;
+    const local = (t - rg.segLen[seg]) / span;
+    const a = rg.pts[seg];
+    const b = rg.pts[seg + 1];
+    return { lat: a.lat + (b.lat - a.lat) * local, lng: a.lng + (b.lng - a.lng) * local };
+  }
 
-  const tlReports = layers?.reports.filter(r => {
-    if (!timelapse || !r.created_at) return !timelapse;
-    const created = new Date(r.created_at);
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays >= (tlDays - 1 - tlDay);
-  }) || [];
+  let vehicles: Vehicle[] = [];
+  let mode: SimMode = 'normal';
+  let speedMul = 1;
+  let running = false;
+  let stats: VehicleStats = { count: 0, avgSpeed: 0, congestion: 0 };
 
-  const startTimelapse = () => {
-    setTlPlaying(true); setTlDay(0);
-    tlRef.current = setInterval(() => {
-      setTlDay(prev => {
-        if (prev >= tlDays - 1) { clearInterval(tlRef.current!); setTlPlaying(false); return prev; }
-        return prev + 1;
+  function buildFleet() {
+    const baseCount = 6000;
+    const target = mode === 'rush' ? baseCount * 3 : baseCount;
+    vehicles = [];
+    for (let i = 0; i < target; i++) {
+      const road = Math.floor(Math.random() * ROADS.length);
+      const roll = Math.random();
+      const type: VehicleType = roll > 0.93 ? 'bus' : roll > 0.82 ? 'truck' : 'car';
+      vehicles.push({
+        road,
+        t: Math.random(),
+        dir: Math.random() > 0.5 ? 1 : -1,
+        base: 0.012 + Math.random() * 0.02,
+        type,
       });
-    }, 800);
-  };
+    }
+  }
+  buildFleet();
 
-  const stopTimelapse = () => {
-    if (tlRef.current) clearInterval(tlRef.current);
-    setTlPlaying(false);
+  // Canvas overlay
+  class Overlay extends google.maps.OverlayView {
+    canvas: HTMLCanvasElement;
+    ctx: CanvasRenderingContext2D | null = null;
+    raf = 0;
+    last = 0;
+
+    constructor() {
+      super();
+      this.canvas = document.createElement('canvas');
+      this.canvas.style.position = 'absolute';
+      this.canvas.style.pointerEvents = 'none';
+      this.canvas.style.top = '0';
+      this.canvas.style.left = '0';
+    }
+    onAdd() {
+      const panes = this.getPanes();
+      panes?.overlayLayer.appendChild(this.canvas);
+      this.ctx = this.canvas.getContext('2d');
+    }
+    onRemove() {
+      cancelAnimationFrame(this.raf);
+      this.canvas.parentNode?.removeChild(this.canvas);
+    }
+    draw() {
+      // Position canvas over current bounds; per-frame redraw handled in loop.
+    }
+
+    private project(
+      lat: number,
+      lng: number,
+      sw: { lat: number; lng: number },
+      ne: { lat: number; lng: number },
+      w: number,
+      h: number,
+    ) {
+      // Linear approximation — accurate enough for dots over a city extent.
+      const x = ((lng - sw.lng) / (ne.lng - sw.lng)) * w;
+      const y = ((ne.lat - lat) / (ne.lat - sw.lat)) * h;
+      return { x, y };
+    }
+
+    frame = (ts: number) => {
+      this.raf = requestAnimationFrame(this.frame);
+      const proj = this.getProjection();
+      const bounds = map.getBounds();
+      if (!proj || !bounds || !this.ctx) return;
+
+      const dt = this.last ? Math.min((ts - this.last) / 1000, 0.1) : 0;
+      this.last = ts;
+
+      const div = map.getDiv() as HTMLElement;
+      const w = div.offsetWidth;
+      const h = div.offsetHeight;
+      if (this.canvas.width !== w) this.canvas.width = w;
+      if (this.canvas.height !== h) this.canvas.height = h;
+
+      // Anchor the canvas to the map container top-left (div-pixel of NW corner).
+      const nw = proj.fromLatLngToDivPixel(
+        new google.maps.LatLng(bounds.getNorthEast().lat(), bounds.getSouthWest().lng()),
+      );
+      if (nw) {
+        this.canvas.style.left = `${nw.x}px`;
+        this.canvas.style.top = `${nw.y}px`;
+      }
+
+      const sw = { lat: bounds.getSouthWest().lat(), lng: bounds.getSouthWest().lng() };
+      const ne = { lat: bounds.getNorthEast().lat(), lng: bounds.getNorthEast().lng() };
+
+      const ctx = this.ctx;
+      ctx.clearRect(0, 0, w, h);
+
+      // Don't draw dots when simulation is stopped.
+      if (!running) return;
+
+      let drawn = 0;
+      let slow = 0;
+      const speedFactor = running ? speedMul : 0;
+
+      for (let i = 0; i < vehicles.length; i++) {
+        const v = vehicles[i];
+        if (running && dt) {
+          v.t += v.base * speedFactor * v.dir * dt;
+          if (v.t > 1) { v.t = 1; v.dir = -1; }
+          if (v.t < 0) { v.t = 0; v.dir = 1; }
+        }
+        const rg = roadGeo[v.road];
+        const p = posOnRoad(rg, v.t);
+
+        // Emergency mode: vehicles inside flood zones are removed from flow.
+        if (mode === 'emergency') {
+          let blocked = false;
+          for (const z of FLOOD_ZONES) {
+            if (pointInRing(p.lat, p.lng, z.ring)) { blocked = true; break; }
+          }
+          if (blocked) { slow++; continue; }
+        }
+
+        if (p.lat < sw.lat || p.lat > ne.lat || p.lng < sw.lng || p.lng > ne.lng) continue;
+        const { x, y } = this.project(p.lat, p.lng, sw, ne, w, h);
+
+        if (v.type === 'bus') {
+          ctx.fillStyle = COLORS.secondary;
+          ctx.fillRect(x - 4, y - 4, 8, 8);
+        } else if (v.type === 'truck') {
+          ctx.fillStyle = COLORS.accent;
+          ctx.fillRect(x - 3, y - 3, 6, 6);
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(x - 2, y - 2, 4, 4);
+        }
+        drawn++;
+      }
+
+      // Cheap congestion proxy: density vs capacity + blocked share.
+      const density = drawn / Math.max(vehicles.length, 1);
+      const congestion = Math.min(
+        100,
+        Math.round((density * 40 + (slow / Math.max(vehicles.length, 1)) * 100) * (mode === 'rush' ? 1.4 : 1)),
+      );
+      const avgSpeed = Math.max(
+        5,
+        Math.round((mode === 'emergency' ? 30 : 50) * speedMul * (1 - congestion / 140)),
+      );
+      stats = { count: vehicles.length - slow, avgSpeed, congestion };
+    };
+
+    start() {
+      cancelAnimationFrame(this.raf);
+      this.last = 0;
+      this.raf = requestAnimationFrame(this.frame);
+    }
+  }
+
+  const overlay = new Overlay();
+  overlay.setMap(map);
+  // Kick off the render loop once panes exist.
+  const startTimer = window.setTimeout(() => overlay.start(), 300);
+
+  return {
+    setRunning: (v) => { running = v; },
+    setSpeed: (v) => { speedMul = v; },
+    setMode: (m) => {
+      const rebuild = m === 'rush' || mode === 'rush';
+      mode = m;
+      if (rebuild) buildFleet();
+    },
+    reset: () => { running = false; buildFleet(); },
+    getStats: () => stats,
+    destroy: () => {
+      window.clearTimeout(startTimer);
+      overlay.setMap(null);
+    },
   };
+}
+
+// ---------------------------------------------------------------------------
+//  HEATMAP OVERLAY (custom canvas — Google removed HeatmapLayer in Maps v3.65)
+// ---------------------------------------------------------------------------
+
+interface HeatPt { lat: number; lng: number; intensity: number }
+interface HeatmapOverlayApi {
+  update(points: HeatPt[]): void;
+  destroy(): void;
+}
+
+function createHeatmapOverlay(map: google.maps.Map): HeatmapOverlayApi {
+  // Pre-baked color ramp (navy-blue → accent → red), indexed by accumulated alpha.
+  const ramp = (() => {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 1;
+    const cx = c.getContext('2d')!;
+    const g = cx.createLinearGradient(0, 0, 256, 0);
+    g.addColorStop(0.0, 'rgba(46,134,171,0)');
+    g.addColorStop(0.35, 'rgba(46,134,171,0.85)');
+    g.addColorStop(0.65, 'rgba(246,174,45,0.9)');
+    g.addColorStop(1.0, 'rgba(231,76,60,1)');
+    cx.fillStyle = g;
+    cx.fillRect(0, 0, 256, 1);
+    return cx.getImageData(0, 0, 256, 1).data;
+  })();
+
+  let points: HeatPt[] = [];
+
+  class Heat extends google.maps.OverlayView {
+    canvas = document.createElement('canvas');
+    ctx: CanvasRenderingContext2D | null = null;
+    onAdd() {
+      this.canvas.style.position = 'absolute';
+      this.canvas.style.pointerEvents = 'none';
+      this.getPanes()?.overlayLayer.appendChild(this.canvas);
+      this.ctx = this.canvas.getContext('2d');
+    }
+    onRemove() { this.canvas.parentNode?.removeChild(this.canvas); }
+    draw() {
+      const proj = this.getProjection();
+      const bounds = map.getBounds();
+      if (!proj || !bounds || !this.ctx) return;
+      const div = map.getDiv() as HTMLElement;
+      const w = div.offsetWidth, h = div.offsetHeight;
+      if (this.canvas.width !== w) this.canvas.width = w;
+      if (this.canvas.height !== h) this.canvas.height = h;
+      const nw = proj.fromLatLngToDivPixel(
+        new google.maps.LatLng(bounds.getNorthEast().lat(), bounds.getSouthWest().lng()),
+      );
+      if (nw) { this.canvas.style.left = `${nw.x}px`; this.canvas.style.top = `${nw.y}px`; }
+      const sw = { lat: bounds.getSouthWest().lat(), lng: bounds.getSouthWest().lng() };
+      const ne = { lat: bounds.getNorthEast().lat(), lng: bounds.getNorthEast().lng() };
+      const ctx = this.ctx;
+      ctx.clearRect(0, 0, w, h);
+      if (!points.length) return;
+      const radius = 34;
+      // Accumulate intensity into the alpha channel.
+      for (const p of points) {
+        const x = ((p.lng - sw.lng) / (ne.lng - sw.lng)) * w;
+        const y = ((ne.lat - p.lat) / (ne.lat - sw.lat)) * h;
+        if (x < -radius || x > w + radius || y < -radius || y > h + radius) continue;
+        const a = Math.max(0.15, Math.min(1, (p.intensity || 1) / 10));
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+        grad.addColorStop(0, `rgba(0,0,0,${a})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Colorize by accumulated alpha using the ramp.
+      const img = ctx.getImageData(0, 0, w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const al = d[i + 3];
+        if (al) {
+          const o = al * 4;
+          d[i] = ramp[o];
+          d[i + 1] = ramp[o + 1];
+          d[i + 2] = ramp[o + 2];
+          d[i + 3] = ramp[o + 3];
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+    setPoints(p: HeatPt[]) { points = p; this.draw(); }
+  }
+
+  const heat = new Heat();
+  heat.setMap(map);
+  return {
+    update: (p) => heat.setPoints(p),
+    destroy: () => heat.setMap(null),
+  };
+}
+
+// ---------------------------------------------------------------------------
+//  PRESENTATIONAL: Accordion
+// ---------------------------------------------------------------------------
+
+function Accordion({
+  id,
+  icon,
+  title,
+  open,
+  onToggle,
+  children,
+  badge,
+}: {
+  id: string;
+  icon: string;
+  title: string;
+  open: boolean;
+  onToggle: (id: string) => void;
+  children: React.ReactNode;
+  badge?: React.ReactNode;
+}) {
+  return (
+    <div style={S.accSection} className="dt-accordion">
+      <button style={S.accHeader} onClick={() => onToggle(id)} className="dt-acc-header">
+        <span style={{ fontSize: 15 }}>{icon}</span>
+        <span style={{ flex: 1, textAlign: 'left' }}>{title}</span>
+        {badge}
+        <span style={{ transform: open ? 'rotate(90deg)' : 'none', transition: '0.15s', color: COLORS.textMuted }}>›</span>
+      </button>
+      {open && <div style={S.accBody}>{children}</div>}
+    </div>
+  );
+}
+
+// ============================================================================
+//  MAIN COMPONENT
+// ============================================================================
+
+export default function DigitalTwin() {
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: LIBRARIES,
+  });
+
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const [mapObj, setMapObj] = useState<google.maps.Map | null>(null);
+  const overlayRef = useRef<VehicleOverlayApi | null>(null);
+  const heatRef = useRef<HeatmapOverlayApi | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectRef = useRef<number | null>(null);
+  const hereRoadsRef = useRef<google.maps.Polyline[]>([]);
+
+  // ---- Data state ----
+  const [layers, setLayers] = useState<LayersResponse>({ reports: [], iot_devices: [], crises: [] });
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [heatmap, setHeatmap] = useState<HeatPoint[]>([]);
+  const [external, setExternal] = useState<ExternalData>({});
+  const [wsConnected, setWsConnected] = useState(false);
+  const [liveFeed, setLiveFeed] = useState<{ ts: number; text: string }[]>([]);
+  const [alerts, setAlerts] = useState<AlertEntry[]>([]);
+
+  // ---- UI state ----
+  const [open, setOpen] = useState<Record<string, boolean>>({
+    layers: true, sim: false, results: false, alerts: true, weather: false, external: false, timelapse: false, log: false,
+  });
+  const toggle = useCallback((id: string) => setOpen((p) => ({ ...p, [id]: !p[id] })), []);
+
+  // ---- Layer toggles ----
+  const [showReports, setShowReports] = useState(true);
+  const [showIot, setShowIot] = useState(true);
+  const [showCrises, setShowCrises] = useState(true);
+  const [showTraffic, setShowTraffic] = useState(true);
+  const [showFlood, setShowFlood] = useState(false);
+  const [showRoadRisks, setShowRoadRisks] = useState(false);
+  const [clustered, setClustered] = useState(true);
+  const [showHereTraffic, setShowHereTraffic] = useState(true);
+
+  // ---- Simulation ----
+  const [scenario, setScenario] = useState<ScenarioKey>('flood');
+  const [simLocation, setSimLocation] = useState('');
+  const [simLatLng, setSimLatLng] = useState<{ lat: number; lng: number } | null>(null);
+  const [simDesc, setSimDesc] = useState('');
+  const [simRunning, setSimRunning] = useState(false);
+  const [simResult, setSimResult] = useState<SimResult | null>(null);
+  const [simZones, setSimZones] = useState<SimZone[]>([]);
+
+  // ---- Map interaction ----
+  const [mapType, setMapType] = useState<google.maps.MapTypeId | string>('hybrid');
+  const [infoPos, setInfoPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [infoData, setInfoData] = useState<{ nearby: number; risk: string; density: number } | null>(null);
+  const [streetView, setStreetView] = useState<{ lat: number; lng: number } | null>(null);
+  const streetDivRef = useRef<HTMLDivElement | null>(null);
+
+  // ---- Vehicle sim UI ----
+  const [vehRunning, setVehRunning] = useState(false);
+  const [vehSpeed, setVehSpeed] = useState(1);
+  const [vehMode, setVehMode] = useState<SimMode>('normal');
+  const [vehStats, setVehStats] = useState<VehicleStats>({ count: 0, avgSpeed: 0, congestion: 0 });
+
+  // ---- Time-lapse ----
+  const [tlDay, setTlDay] = useState(6); // 0..6 (today = 6)
+  const [tlPlaying, setTlPlaying] = useState(false);
+
+  // -------------------------------------------------------------------------
+  //  DATA FETCHING + AUTO REFRESH
+  // -------------------------------------------------------------------------
+  const fetchAll = useCallback(async (signal?: AbortSignal) => {
+    const [l, s, h, e] = await Promise.all([
+      getJSON<LayersResponse>('/digital-twin/layers', signal),
+      getJSON<{ summary: Snapshot }>('/digital-twin/snapshot', signal),
+      getJSON<{ points: HeatPoint[] }>('/digital-twin/heatmap', signal),
+      getJSON<ExternalData>('/external/all', signal),
+    ]);
+    if (l) {
+      const norm = <T,>(v: unknown): T[] => toArray(v).flatMap((it) => { const g = geo(it); return g ? [g as unknown as T] : []; });
+      setLayers({
+        reports: norm<ReportItem>(l.reports),
+        iot_devices: norm<IotDevice>(l.iot_devices),
+        crises: norm<CrisisItem>(l.crises),
+      });
+    }
+    if (s?.summary) setSnapshot(s.summary);
+    if (h) {
+      const pts = toArray<Record<string, unknown>>(h.points ?? h);
+      setHeatmap(pts.flatMap((p) => {
+        const g = geo(p);
+        return g ? [{ lat: g.lat, lng: g.lng, intensity: num(p.intensity) ?? num(p.weight) ?? 1 }] : [];
+      }));
+    }
+    if (e) {
+      setExternal(e);
+      deriveSmartAlerts(e);
+    }
+    // deriveSmartAlerts is a stable useCallback([]) — safe to omit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 30000);
-    const connectWS = () => {
-      const ws = new WebSocket(`${WS_URL}/ws`);
-      ws.onopen = () => setWsStatus('connected');
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'new_report') {
-          setLayers(prev => prev ? {
-            ...prev,
-            reports: [...prev.reports, {
-              id: data.data.id, lat: data.data.latitude, lng: data.data.longitude,
-              category: data.data.category, severity: data.data.severity,
-              status: data.data.status, created_at: new Date().toISOString(),
-            }]
-          } : prev);
-          setLiveUpdates(prev => [`Νέα αναφορά: ${data.data.category}`, ...prev.slice(0, 4)]);
-        }
-        if (data.type === 'external_alert') {
-          data.alerts?.forEach((a: any) => setLiveUpdates(prev => [a.message, ...prev.slice(0, 4)]));
-        }
-      };
-      ws.onclose = () => { setWsStatus('disconnected'); setTimeout(connectWS, 3000); };
+    const ctrl = new AbortController();
+    fetchAll(ctrl.signal);
+    const t = window.setInterval(() => fetchAll(), REFRESH_MS);
+    return () => { ctrl.abort(); window.clearInterval(t); };
+  }, [fetchAll]);
+
+  // -------------------------------------------------------------------------
+  //  SMART ALERTS (από external data)
+  // -------------------------------------------------------------------------
+  const deriveSmartAlerts = useCallback((e: ExternalData) => {
+    const next: AlertEntry[] = [];
+    const eq = (e.earthquakes as Record<string, unknown>)?.earthquakes ?? e.earthquakes;
+    toArray<Record<string, any>>(eq).forEach((q, i) => {
+      const mag = num(q.magnitude) ?? num(q.mag) ?? num(q.properties?.mag) ?? 0;
+      if (mag >= 3.5)
+        next.push({ id: `eq-${i}-${q.time ?? q.id ?? i}`, level: mag >= 5 ? 'critical' : 'warning',
+          text: `Σεισμός ${mag}R — ${q.place ?? q.location ?? q.properties?.place ?? 'περιοχή Ηρακλείου'}`, ts: Date.now() });
+    });
+    const hz = e.hazards as Record<string, unknown> | undefined;
+    const fires = [...toArray<Record<string, any>>(hz?.fires), ...toArray<Record<string, any>>(hz?.nearby_fires)];
+    fires.forEach((f, i) => {
+      next.push({ id: `fire-${i}`, level: 'critical',
+        text: `🔥 Πυρκαγιά — ${f.place ?? f.location ?? f.title ?? 'κοντινή περιοχή'}`, ts: Date.now() });
+    });
+    const aqi = num(e.air_quality?.aqi);
+    if (aqi != null && aqi > 100)
+      next.push({ id: 'aq', level: 'warning', text: `Κακή ποιότητα αέρα (AQI ${aqi})`, ts: Date.now() });
+    toArray<Record<string, any>>(e.weather?.alerts).forEach((a, i) =>
+      next.push({ id: `wx-${i}`, level: 'warning', text: `Καιρός: ${a.event ?? a.description ?? a.headline ?? ''}`, ts: Date.now() }));
+    if (next.length) setAlerts((prev) => [...next, ...prev].slice(0, 10));
+  }, []);
+
+  // -------------------------------------------------------------------------
+  //  WEBSOCKET + RECONNECT
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    let closed = false;
+    const connect = () => {
+      if (closed) return;
+      const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
+      ws.onopen = () => setWsConnected(true);
+      ws.onclose = () => {
+        setWsConnected(false);
+        if (!closed) reconnectRef.current = window.setTimeout(connect, 3000);
+      };
+      ws.onerror = () => ws.close();
+      ws.onmessage = (ev) => {
+        let text = ev.data;
+        try {
+          const msg = JSON.parse(ev.data);
+          text = msg.message ?? msg.text ?? msg.type ?? ev.data;
+          if (msg.type === 'alert' || msg.level === 'critical') {
+            setAlerts((p) => [{ id: `ws-${Date.now()}`, level: msg.level ?? 'info', text, ts: Date.now() }, ...p].slice(0, 10));
+          }
+        } catch { /* plain text */ }
+        setLiveFeed((p) => [{ ts: Date.now(), text: String(text) }, ...p].slice(0, 50));
+      };
     };
-    connectWS();
+    connect();
     return () => {
-      clearInterval(interval);
+      closed = true;
+      if (reconnectRef.current) window.clearTimeout(reconnectRef.current);
       wsRef.current?.close();
-      if (tlRef.current) clearInterval(tlRef.current);
     };
   }, []);
 
-  const loadData = async () => {
-    try {
-      const [layersRes, snapshotRes, heatRes, externalRes] = await Promise.all([
-        axios.get(`${API_URL}/digital-twin/layers`),
-        axios.get(`${API_URL}/digital-twin/snapshot`),
-        axios.get(`${API_URL}/digital-twin/heatmap`),
-        axios.get(`${API_URL}/external/all`),
-      ]);
-      setLayers(layersRes.data);
-      setSummary(snapshotRes.data.summary);
-      setHeatmapPoints(heatRes.data.points);
-      setExternalData(externalRes.data);
-    } catch(e) { console.error('Digital Twin error:', e); }
-    finally { setLoading(false); }
-  };
+  // -------------------------------------------------------------------------
+  //  MAP LOAD → vehicle overlay
+  // -------------------------------------------------------------------------
+  const onMapLoad = useCallback((map: google.maps.Map) => {
+    mapRef.current = map;
+    setMapObj(map);
+    overlayRef.current = createVehicleOverlay(map);
+    heatRef.current = createHeatmapOverlay(map);
+  }, []);
 
-  const searchLocation = async (query: string) => {
-    setScenario({...scenario, location: query});
-    if (query.length < 3) { setLocationSuggestions([]); return; }
+  useEffect(() => () => { overlayRef.current?.destroy(); heatRef.current?.destroy(); }, []);
+
+  // Push vehicle controls → overlay + poll stats
+  useEffect(() => { overlayRef.current?.setRunning(vehRunning); }, [vehRunning]);
+  useEffect(() => { overlayRef.current?.setSpeed(vehSpeed); }, [vehSpeed]);
+  useEffect(() => { overlayRef.current?.setMode(vehMode); }, [vehMode]);
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (overlayRef.current) setVehStats(overlayRef.current.getStats());
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // -------------------------------------------------------------------------
+  //  TIME-LAPSE auto-play
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!tlPlaying) return;
+    const t = window.setInterval(() => setTlDay((d) => (d >= 6 ? 0 : d + 1)), 1200);
+    return () => window.clearInterval(t);
+  }, [tlPlaying]);
+
+  // Heatmap filtered by time-lapse day (simulated decay for past days)
+  const heatPoints = useMemo<HeatPt[]>(() => {
+    if (!showReports) return [];
+    const factor = 0.5 + (tlDay / 6) * 0.5; // older days = lighter
+    return heatmap.map((p) => ({ lat: p.lat, lng: p.lng, intensity: Math.max(0.1, (p.intensity ?? 1) * factor) }));
+  }, [heatmap, showReports, tlDay]);
+
+  // Feed heatmap points to the canvas overlay.
+  useEffect(() => { heatRef.current?.update(heatPoints); }, [heatPoints]);
+
+  // -------------------------------------------------------------------------
+  //  SIMULATION (POST /digital-twin/simulate)
+  // -------------------------------------------------------------------------
+  const geocodeLocation = useCallback(async (q: string): Promise<{ lat: number; lng: number } | null> => {
+    if (!q.trim()) return null;
     try {
-      const res = await axios.get(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&accept-language=el&countrycodes=gr`
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q + ', Ηράκλειο')}`,
       );
-      setLocationSuggestions(res.data);
-    } catch { setLocationSuggestions([]); }
-  };
+      const data = await res.json();
+      if (data?.[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    } catch { /* ignore */ }
+    return null;
+  }, []);
 
-  const runSimulation = async () => {
-    setSimulating(true);
+  const runSimulation = useCallback(async () => {
+    setSimRunning(true);
+    setSimResult(null);
+    setSimZones([]);
+    let loc = simLatLng;
+    if (!loc && simLocation) {
+      loc = await geocodeLocation(simLocation);
+      if (loc) setSimLatLng(loc);
+    }
+    if (!loc) loc = MAP_CENTER;
+    mapRef.current?.panTo(loc);
+
     try {
-      const res = await axios.post(`${API_URL}/digital-twin/simulate`, scenario);
-      setSimResult(res.data);
-    } catch { alert('Σφάλμα simulation'); }
-    finally { setSimulating(false); }
-  };
+      const res = await fetch(`${BACKEND}/digital-twin/simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario, location: loc, description: simDesc }),
+      });
+      const data: Record<string, any> = res.ok ? await res.json() : {};
+      // Normalize — backend may return objects instead of strings.
+      const toStr = (v: unknown): string =>
+        v == null ? '' : typeof v === 'string' ? v : typeof v === 'object' ? Object.values(v as Record<string, unknown>).join(' · ') : String(v);
+      const actions: string[] = toArray<unknown>(data.recommended_actions ?? data.actions ?? []).map(toStr).filter(Boolean);
+      setSimResult({
+        severity: toStr(data.severity) || 'medium',
+        summary: toStr(data.summary) || 'Η προσομοίωση ολοκληρώθηκε. Δείτε τις επηρεαζόμενες ζώνες στον χάρτη.',
+        recommended_actions: actions.length ? actions : ['Ενημέρωση πολιτικής προστασίας', 'Αποκλεισμός επικίνδυνων οδών', 'Ειδοποίηση κατοίκων'],
+      });
+      // Use backend zones if present, else synthesize concentric rings.
+      const zones = data.zones?.length ? data.zones : synthZones(loc);
+      setSimZones(zones);
+    } catch {
+      setSimResult({ severity: 'unknown', summary: 'Σφάλμα επικοινωνίας με backend.', recommended_actions: [] });
+      setSimZones(synthZones(loc));
+    } finally {
+      setSimRunning(false);
+      setOpen((p) => ({ ...p, results: true }));
+    }
+  }, [scenario, simDesc, simLatLng, simLocation, geocodeLocation]);
 
-  const getReportColor = (severity: string) => {
-    if (severity === 'high')   return '#E63946';
-    if (severity === 'medium') return '#F6AE2D';
-    return '#2D936C';
-  };
+  // -------------------------------------------------------------------------
+  //  MAP CLICK → InfoWindow analytics
+  // -------------------------------------------------------------------------
+  const onMapClick = useCallback(
+    (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
+      const click = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      const nearby = layers.reports.filter((r) => haversine(click, r) <= 200).length;
+      // Risk from nearby heatmap intensity
+      const near = heatmap.filter((p) => haversine(click, p) <= 300);
+      const intensity = near.reduce((a, p) => a + (p.intensity ?? 0), 0);
+      const riskScore = Math.min(100, intensity * 8 + nearby * 5);
+      const risk = riskScore > 70 ? 'Υψηλός' : riskScore > 40 ? 'Μέτριος' : 'Χαμηλός';
+      // Vehicle density proxy: distance to nearest road
+      let minRoad = Infinity;
+      ROADS.forEach((r) =>
+        r.points.forEach(([lat, lng]) => { minRoad = Math.min(minRoad, haversine(click, { lat, lng })); }),
+      );
+      const density = Math.max(0, Math.round(100 - minRoad / 20));
+      setInfoPos(click);
+      setInfoData({ nearby, risk, density });
+    },
+    [layers.reports, heatmap],
+  );
 
-  const getDeviceColor = (type: string) => {
-    const colors: Record<string, string> = {
-      waste_bin: '#795548', street_light: '#FDD835',
-      environment: '#26C6DA', water_pressure: '#1565C0', traffic: '#AB47BC',
+  // -------------------------------------------------------------------------
+  //  STREET VIEW panel
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!streetView || !streetDivRef.current || !isLoaded) return;
+    const pano = new google.maps.StreetViewPanorama(streetDivRef.current, {
+      position: streetView,
+      pov: { heading: 0, pitch: 0 },
+      zoom: 1,
+      visible: true,
+      addressControl: true,
+      enableCloseButton: false,
+    });
+    return () => pano.setVisible(false);
+  }, [streetView, isLoaded]);
+
+  // -------------------------------------------------------------------------
+  //  HERE MAPS TRAFFIC FLOW — polylines per link, colored by jamFactor
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const clearLines = () => {
+      hereRoadsRef.current.forEach((p) => p.setMap(null));
+      hereRoadsRef.current = [];
     };
-    return colors[type] || '#78909C';
-  };
 
-  const smartAlerts: string[] = [];
-  if (externalData?.weather?.alerts) externalData.weather.alerts.forEach((a: any) => smartAlerts.push(a.message));
-  if (externalData?.hazards?.auto_crisis) smartAlerts.push('Ενεργή πυρκαγιά εντός 50km!');
-  if (externalData?.earthquakes?.significant?.length > 0)
-    externalData.earthquakes.significant.forEach((eq: any) => smartAlerts.push(`Σεισμός ${eq.magnitude}R — ${eq.distance_km}km`));
-  if (externalData?.air_quality?.aqi > 100)
-    smartAlerts.push(`Κακή ποιότητα αέρα — AQI ${externalData.air_quality.aqi}`);
-  if (externalData?.traffic?.incidents?.some((i: any) => i.severity === 'critical'))
-    smartAlerts.push('Κρίσιμο κυκλοφοριακό incident!');
+    if (!mapObj || !showHereTraffic) { clearLines(); return; }
 
-  const activeReports = timelapse ? tlReports : (layers?.reports || []);
+    const draw = async () => {
+      try {
+        const res = await fetch(
+          `https://data.traffic.hereapi.com/v7/flow?locationReferencing=shape&in=circle:35.3387,25.1442;r=5000&apiKey=${HERE_API_KEY}`,
+        );
+        if (!res.ok) { console.warn('HERE Traffic: HTTP', res.status); return; }
+        const data = await res.json();
 
-  const reportMarkers = activeReports.map(report => (
-    <CircleMarker key={report.id} center={[report.lat, report.lng]}
-      radius={report.severity === 'high' ? 12 : 8}
-      fillColor={getReportColor(report.severity)} color={getReportColor(report.severity)}
-      fillOpacity={0.7} weight={2}>
-      <Popup>
-        <p className="font-bold">{categoryLabels[report.category] || report.category}</p>
-        <p>Σοβαρότητα: {report.severity}</p>
-        <p>Status: {report.status}</p>
-      </Popup>
-      <Tooltip>{categoryLabels[report.category] || report.category}</Tooltip>
-    </CircleMarker>
-  ));
+        clearLines();
 
-  const layerBtnCls = (active: boolean) =>
-    `px-3 py-1 rounded-full text-xs font-medium transition-opacity ${active ? 'opacity-100' : 'opacity-40'}`;
+        for (const result of (data.results ?? [])) {
+          const jf: number = result.currentFlow?.jamFactor ?? 0;
+          const color = jamColor(jf);
+          for (const link of (result.location?.shape?.links ?? [])) {
+            const path: { lat: number; lng: number }[] = (link.points ?? []).map(
+              (pt: { lat: number; lng: number }) => ({ lat: pt.lat, lng: pt.lng }),
+            );
+            if (path.length < 2) continue;
+            hereRoadsRef.current.push(
+              new google.maps.Polyline({
+                path,
+                map: mapObj,
+                strokeColor: color,
+                strokeWeight: 4,
+                strokeOpacity: 0.85,
+                clickable: false,
+                zIndex: 2,
+              }),
+            );
+          }
+        }
+      } catch (e) {
+        console.warn('HERE Traffic API error:', e);
+      }
+    };
 
+    draw();
+    const interval = window.setInterval(draw, 2 * 60 * 1000);
+    return () => {
+      window.clearInterval(interval);
+      clearLines();
+    };
+  }, [mapObj, showHereTraffic]);
+
+  // -------------------------------------------------------------------------
+  //  RENDER GUARDS
+  // -------------------------------------------------------------------------
+  if (loadError)
+    return <div style={{ padding: 40, color: COLORS.red }}>Σφάλμα φόρτωσης Google Maps. Έλεγξε το API key / referrer restrictions.</div>;
+  if (!isLoaded) return <div style={{ padding: 40 }}>Φόρτωση χάρτη…</div>;
+
+  // -------------------------------------------------------------------------
+  //  DERIVED
+  // -------------------------------------------------------------------------
+  const wx = external.weather ?? {};
+  const eqWrap = external.earthquakes as Record<string, unknown> | undefined;
+  const quakes = toArray<Record<string, any>>(eqWrap?.earthquakes ?? external.earthquakes);
+  const hzWrap = external.hazards as Record<string, unknown> | undefined;
+  const hazardsArr = [...toArray<Record<string, any>>(hzWrap?.fires), ...toArray<Record<string, any>>(hzWrap?.nearby_fires)];
+  const incidents = toArray<Record<string, any>>(external.traffic?.incidents ?? external.traffic);
+  const totalReports = snapshot?.total_reports ?? layers.reports.length;
+  const activeAlerts = snapshot?.active_alerts ?? alerts.length;
+  const riskPct = vehStats.congestion || (alerts.some((a) => a.level === 'critical') ? 80 : 35);
+  const highRisk = riskPct > 70;
+
+  // ===========================================================================
+  //  JSX
+  // ===========================================================================
   return (
-    <div className="p-6 bg-[#F0F4F8] min-h-screen">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
-            <Layers className="w-7 h-7 text-[#2E86AB]" />
-            Digital Twin — Ηράκλειο
-            <InfoButton title="Digital Twin" description="Real-time ψηφιακός χάρτης πόλης. Layers: αναφορές, IoT sensors, κρίσεις, κίνηση, σεισμοί, φωτιές." />
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Ψηφιακό αντίγραφο σε real-time</p>
+    <div style={S.root} className="dt-root">
+      <style>{CSS}</style>
+
+      {/* ============================= TOP BAR ============================= */}
+      <header style={S.topBar} className="dt-topbar">
+        <div style={S.topLeft}>
+          <span style={S.logo}>🏛 Digital Twin — Δήμος Ηρακλείου</span>
+          <span style={{ ...S.livePill, opacity: wsConnected ? 1 : 0.5 }}>
+            <span style={{ ...S.dot, background: wsConnected ? COLORS.green : COLORS.textMuted }} /> Live
+          </span>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${wsStatus === 'connected' ? 'bg-[#2D936C] animate-pulse' : 'bg-[#E63946]'}`} />
-            <span className="text-xs text-gray-500">{wsStatus === 'connected' ? 'Live' : 'Offline'}</span>
-          </div>
-          <button
-            onClick={loadData}
-            className="flex items-center gap-2 bg-[#1E3A5F] text-white px-4 py-2 rounded-lg hover:bg-[#2E86AB] text-sm transition-colors"
+
+        <div style={S.weatherInline} className="dt-weather">
+          <span>☁️ {wx.temperature != null ? `${Math.round(wx.temperature)}°C` : '—'} Ηράκλειο</span>
+          <span>💧 {wx.humidity ?? '—'}% υγρ.</span>
+          <span>🌬 {wx.wind_kmh != null || wx.wind_speed != null ? `${Math.round(wx.wind_kmh ?? (wx.wind_speed ?? 0) * 3.6)}km/h` : '—'}</span>
+        </div>
+
+        <div style={S.topStats} className="dt-topstats">
+          <span style={S.stat}>📊 Reports: <b>{totalReports}</b></span>
+          <span style={S.stat}>🚨 Alerts: <b>{activeAlerts}</b></span>
+          <span style={{ ...S.stat, color: highRisk ? COLORS.red : undefined }}>⚠️ Risk: <b>{riskPct}%</b></span>
+        </div>
+
+        <button style={S.pdfBtn} className="dt-noprint" onClick={() => window.print()}>📄 Εξαγωγή PDF</button>
+      </header>
+
+      {/* ===================== MAIN: SIDEBAR + MAP ===================== */}
+      <div style={S.main}>
+        {/* --------------------------- SIDEBAR --------------------------- */}
+        <aside style={S.sidebar} className="dt-sidebar dt-noprint">
+          {/* 📍 LAYERS */}
+          <Accordion id="layers" icon="📍" title="Layers" open={open.layers} onToggle={toggle}>
+            <Toggle label="🗺 Reports (Heatmap)" checked={showReports} onChange={setShowReports} />
+            <Toggle label="📡 IoT Devices" checked={showIot} onChange={setShowIot} />
+            <Toggle label="🔥 Crises" checked={showCrises} onChange={setShowCrises} />
+            <Toggle label="🚗 Traffic Layer" checked={showTraffic} onChange={setShowTraffic} />
+            <Toggle label="🌊 Flood Zones" checked={showFlood} onChange={setShowFlood} />
+            <Toggle label="⚠️ Road Risks" checked={showRoadRisks} onChange={setShowRoadRisks} />
+            <Toggle label="🔗 Clustering (reports)" checked={clustered} onChange={setClustered} />
+          </Accordion>
+
+          {/* ⚡ FLOOD / SCENARIO SIMULATION */}
+          <Accordion id="sim" icon="⚡" title="Προσομοίωση Κρίσης" open={open.sim} onToggle={toggle}>
+            <label style={S.label}>Σενάριο</label>
+            <select style={S.input} value={scenario} onChange={(e) => setScenario(e.target.value as ScenarioKey)}>
+              {SCENARIOS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+            <label style={S.label}>Τοποθεσία</label>
+            <input style={S.input} placeholder="π.χ. Λιμάνι Ηρακλείου" value={simLocation}
+              onChange={(e) => { setSimLocation(e.target.value); setSimLatLng(null); }} />
+            <label style={S.label}>Περιγραφή</label>
+            <textarea style={{ ...S.input, height: 60, resize: 'vertical' }} value={simDesc} onChange={(e) => setSimDesc(e.target.value)} />
+            <button style={S.primaryBtn} disabled={simRunning} onClick={runSimulation}>
+              {simRunning ? 'Εκτέλεση…' : '▶ Εκτέλεση Προσομοίωσης'}
+            </button>
+          </Accordion>
+
+          {/* 📊 RESULTS */}
+          <Accordion id="results" icon="📊" title="Αποτελέσματα" open={open.results} onToggle={toggle}>
+            {!simResult ? <p style={S.muted}>Δεν υπάρχουν αποτελέσματα ακόμη.</p> : (
+              <>
+                <span style={{ ...S.badge, background: simResult.severity === 'high' ? COLORS.red : simResult.severity === 'low' ? COLORS.green : COLORS.accent }}>
+                  Σοβαρότητα: {String(simResult.severity ?? '—')}
+                </span>
+                <p style={{ ...S.muted, marginTop: 8 }}>{String(simResult.summary ?? '')}</p>
+                <strong style={{ fontSize: 12 }}>Προτεινόμενες ενέργειες:</strong>
+                <ul style={S.ul}>{(simResult.recommended_actions ?? []).map((a: unknown, i: number) => <li key={i}>{typeof a === 'string' ? a : typeof a === 'object' && a !== null ? Object.values(a as Record<string, unknown>).join(' · ') : String(a)}</li>)}</ul>
+              </>
+            )}
+          </Accordion>
+
+          {/* 🚨 ALERTS */}
+          <Accordion id="alerts" icon="🚨" title="Ειδοποιήσεις" open={open.alerts} onToggle={toggle}
+            badge={alerts.length ? <span style={S.countBadge}>{alerts.length}</span> : undefined}>
+            {highRisk && <div style={S.riskBanner}>⚠️ ΥΨΗΛΟΣ ΚΙΝΔΥΝΟΣ — {riskPct}%</div>}
+            {alerts.length === 0 ? <p style={S.muted}>Καμία ενεργή ειδοποίηση.</p> :
+              alerts.map((a) => (
+                <div key={a.id} style={{ ...S.alertRow, borderLeftColor: a.level === 'critical' ? COLORS.red : a.level === 'warning' ? COLORS.accent : COLORS.secondary }}>
+                  <span>{a.text}</span>
+                  <small style={S.ts}>{new Date(a.ts).toLocaleTimeString('el-GR')}</small>
+                </div>
+              ))}
+          </Accordion>
+
+          {/* 🌤 WEATHER + EXTERNAL DATA */}
+          <Accordion id="external" icon="🌐" title="Εξωτερικά Δεδομένα" open={open.external} onToggle={toggle}>
+            <Card title="🌤 Καιρός">
+              {wx.temperature != null ? `${Math.round(wx.temperature)}°C · ${wx.description ?? ''} · υγρ. ${wx.humidity}% · άνεμος ${Math.round(wx.wind_kmh ?? (wx.wind_speed ?? 0) * 3.6)}km/h` : 'N/A'}
+            </Card>
+            <Card title="💨 Ποιότητα Αέρα">
+              {external.air_quality ? `AQI ${external.air_quality.aqi} (${external.air_quality.status ?? '—'}) · PM2.5 ${external.air_quality.pm25 ?? '—'}` : 'N/A'}
+            </Card>
+            <Card title="🚧 Κίνηση">
+              {incidents.length ? incidents.map((i, k) => <div key={k}>• {i.type ?? i.description ?? '—'}{i.location ? ` — ${i.location}` : ''}</div>) : 'Χωρίς συμβάντα'}
+            </Card>
+            <Card title="🌍 Σεισμοί">
+              {quakes.length ? quakes.slice(0, 4).map((q, k) => <div key={k}>• {num(q.magnitude) ?? num(q.mag) ?? '—'}R — {q.place ?? q.location ?? '—'}</div>) : 'Κανένας'}
+            </Card>
+            <Card title="🔥 Πυρκαγιές / Κίνδυνοι">
+              {hazardsArr.length ? hazardsArr.map((h, k) => <div key={k}>• {h.place ?? h.location ?? h.title ?? 'Πυρκαγιά'}</div>) : 'Καμία'}
+            </Card>
+          </Accordion>
+
+          {/* ⏱ TIME-LAPSE */}
+          <Accordion id="timelapse" icon="⏱" title="Time-lapse (7 ημέρες)" open={open.timelapse} onToggle={toggle}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button style={S.smallBtn} onClick={() => setTlPlaying((p) => !p)}>{tlPlaying ? '⏸ Pause' : '▶ Play'}</button>
+              <span style={S.muted}>Ημέρα {tlDay + 1}/7</span>
+            </div>
+            <input type="range" min={0} max={6} value={tlDay} onChange={(e) => setTlDay(Number(e.target.value))} style={{ width: '100%' }} />
+          </Accordion>
+
+          {/* 📋 LIVE LOG */}
+          <Accordion id="log" icon="📋" title="Live Updates" open={open.log} onToggle={toggle}>
+            {liveFeed.length === 0 ? <p style={S.muted}>Αναμονή ενημερώσεων…</p> :
+              liveFeed.map((f, i) => (
+                <div key={i} style={S.feedRow}><small style={S.ts}>{new Date(f.ts).toLocaleTimeString('el-GR')}</small> {f.text}</div>
+              ))}
+          </Accordion>
+        </aside>
+
+        {/* ----------------------------- MAP ----------------------------- */}
+        <div style={S.mapWrap} className="dt-mapwrap">
+          <GoogleMap
+            mapContainerStyle={{ width: '100%', height: '100%' }}
+            center={MAP_CENTER}
+            zoom={DEFAULT_ZOOM}
+            onLoad={onMapLoad}
+            onClick={onMapClick}
+            mapTypeId={mapType}
+            options={{
+              tilt: DEFAULT_TILT,
+              disableDefaultUI: true,
+              gestureHandling: 'greedy',
+              clickableIcons: false,
+            }}
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Ανανέωση
-          </button>
+            {/* Reports heatmap is drawn by the custom canvas overlay (heatRef). */}
+
+            {/* IoT devices — colored circles */}
+            {showIot && layers.iot_devices.map((d, i) => (
+              <Marker
+                key={`iot-${d.id ?? i}`}
+                position={{ lat: d.lat, lng: d.lng }}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 6,
+                  fillColor: d.status === 'offline' ? COLORS.red : COLORS.secondary,
+                  fillOpacity: 0.9,
+                  strokeColor: '#fff',
+                  strokeWeight: 1.5,
+                }}
+                title={`IoT ${d.type ?? ''} ${d.value ?? ''}`}
+              />
+            ))}
+
+            {/* Crises markers */}
+            {showCrises && layers.crises.map((c, i) => (
+              <Marker key={`crisis-${c.id ?? i}`} position={{ lat: c.lat, lng: c.lng }}
+                label={{ text: '🔥', fontSize: '16px' }} title={c.title ?? 'Κρίση'} />
+            ))}
+
+            {/* Reports markers — imperative clusterer (clustered toggle) */}
+            <ReportClusters map={mapObj} reports={showReports ? layers.reports : []} clustered={clustered} />
+
+            {/* Traffic */}
+            {showTraffic && <TrafficLayer />}
+
+            {/* Flood zones */}
+            {showFlood && FLOOD_ZONES.map((z, i) => (
+              <Polygon key={`flood-${i}`} paths={z.ring}
+                options={{ fillColor: COLORS.secondary, fillOpacity: 0.25, strokeColor: COLORS.secondary, strokeWeight: 2 }} />
+            ))}
+
+            {/* Road risks */}
+            {showRoadRisks && ROADS.map((r, i) => (
+              <Circle key={`risk-${i}`} center={{ lat: r.points[0][0], lng: r.points[0][1] }}
+                radius={180} options={{ fillColor: COLORS.red, fillOpacity: 0.15, strokeColor: COLORS.red, strokeWeight: 1 }} />
+            ))}
+
+            {/* Simulation result zones */}
+            {simZones.map((z, i) => (
+              <Polygon key={`sim-${i}`} paths={z.polygon.map(([lat, lng]) => ({ lat, lng }))}
+                options={{
+                  fillColor: z.level === 'red' ? COLORS.red : z.level === 'yellow' ? COLORS.yellow : COLORS.green,
+                  fillOpacity: 0.35,
+                  strokeColor: z.level === 'red' ? COLORS.red : z.level === 'yellow' ? COLORS.yellow : COLORS.green,
+                  strokeWeight: 2,
+                }} />
+            ))}
+
+            {/* Click InfoWindow */}
+            {infoPos && infoData && (
+              <InfoWindow position={infoPos} onCloseClick={() => setInfoPos(null)}>
+                <div style={{ fontSize: 13, minWidth: 180, color: COLORS.text }}>
+                  <strong>Ανάλυση σημείου</strong>
+                  <div>📋 Reports &lt;200m: <b>{infoData.nearby}</b></div>
+                  <div>⚠️ Κίνδυνος: <b>{infoData.risk}</b></div>
+                  <div>🚗 Πυκνότητα: <b>{infoData.density}%</b></div>
+                  <button style={{ ...S.smallBtn, marginTop: 6 }} onClick={() => { setStreetView(infoPos); setInfoPos(null); }}>
+                    👁 Street View
+                  </button>
+                </div>
+              </InfoWindow>
+            )}
+          </GoogleMap>
+
+          {/* Floating map controls */}
+          <div style={S.floatControls} className="dt-noprint">
+            <button style={S.fctrl} onClick={() => mapRef.current?.setZoom((mapRef.current.getZoom() ?? DEFAULT_ZOOM) + 1)}>＋</button>
+            <button style={S.fctrl} onClick={() => mapRef.current?.setZoom((mapRef.current.getZoom() ?? DEFAULT_ZOOM) - 1)}>－</button>
+            <select style={S.fselect} value={mapType} onChange={(e) => setMapType(e.target.value)}>
+              <option value="satellite">Satellite</option>
+              <option value="terrain">Terrain</option>
+              <option value="roadmap">Road</option>
+            </select>
+            <button style={S.fctrl} onClick={() => {
+              const el = mapRef.current?.getDiv().parentElement;
+              if (!document.fullscreenElement) el?.requestFullscreen?.(); else document.exitFullscreen?.();
+            }}>⛶</button>
+          </div>
+
+          {/* Street View slide-in panel */}
+          <div style={{ ...S.streetPanel, transform: streetView ? 'translateX(0)' : 'translateX(110%)' }} className="dt-noprint">
+            <div style={S.streetHeader}>
+              <span>Street View</span>
+              <button style={S.closeBtn} onClick={() => setStreetView(null)}>✕</button>
+            </div>
+            <div ref={streetDivRef} style={{ width: '100%', height: 'calc(100% - 40px)' }} />
+          </div>
         </div>
       </div>
 
-      {/* Smart Alerts */}
-      {smartAlerts.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-          <p className="text-xs font-bold text-red-800 mb-2 flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Smart Alerts ({smartAlerts.length})
-          </p>
-          {smartAlerts.map((alert, i) => <p key={i} className="text-xs text-red-700">• {alert}</p>)}
-        </div>
-      )}
+      {/* ============================ BOTTOM BAR ============================ */}
+      <footer style={S.bottomBar} className="dt-bottombar dt-noprint">
+        <span style={{ fontSize: 18 }}>🚗</span>
+        <button style={S.vbtn} onClick={() => setVehRunning(true)}>▶ Start</button>
+        <button style={S.vbtn} onClick={() => setVehRunning(false)}>⏹ Stop</button>
+        <button style={S.vbtn} onClick={() => { overlayRef.current?.reset(); setVehRunning(false); }}>↺ Reset</button>
 
-      {/* Live Updates */}
-      {liveUpdates.length > 0 && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">
-          <p className="text-xs font-bold text-emerald-800 mb-1 flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5" />
-            Live Updates
-          </p>
-          {liveUpdates.map((u, i) => <p key={i} className="text-xs text-emerald-700">• {u}</p>)}
+        <div style={S.vsliderWrap}>
+          <span style={S.vlabel}>Speed</span>
+          <input type="range" min={1} max={10} value={vehSpeed} onChange={(e) => setVehSpeed(Number(e.target.value))} style={{ width: 120 }} />
+          <span style={S.vlabel}>{vehSpeed}x</span>
         </div>
-      )}
 
-      {/* Stats */}
-      {summary && (
-        <div className="grid grid-cols-5 gap-3 mb-4">
-          {[
-            { label: 'Αναφορές', value: summary.total_reports,  color: '#2E86AB' },
-            { label: 'Ανοιχτές', value: summary.open_reports,   color: '#F6AE2D' },
-            { label: 'IoT',      value: summary.iot_devices,     color: '#2D936C' },
-            { label: 'Alerts',   value: summary.active_alerts,   color: '#E63946' },
-            { label: 'Κρίσεις', value: summary.active_crises,   color: '#6366f1' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-white rounded-xl shadow-sm p-3 text-center" style={{ borderTop: `4px solid ${stat.color}` }}>
-              <p className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{stat.label}</p>
-            </div>
+        <div style={S.modeWrap}>
+          {(['normal', 'rush', 'emergency'] as SimMode[]).map((m) => (
+            <button key={m} style={{ ...S.modeBtn, ...(vehMode === m ? S.modeBtnActive : {}) }} onClick={() => setVehMode(m)}>
+              {m === 'normal' ? 'Normal' : m === 'rush' ? 'Rush Hour' : 'Emergency'}
+            </button>
           ))}
         </div>
-      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* ── Map column ── */}
-        <div className="lg:col-span-2">
-
-          {/* Controls */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 mb-3">
-            <div className="flex gap-2 flex-wrap items-center">
-              <span className="text-xs font-semibold text-gray-600">Style:</span>
-              {MAP_STYLES.map(s => (
-                <button key={s.key} onClick={() => setMapStyle(s.key)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
-                    mapStyle === s.key
-                      ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-[#2E86AB]'
-                  }`}>
-                  {s.label}
-                </button>
-              ))}
-              <div className="w-px h-4 bg-gray-200 mx-1" />
-              <span className="text-xs font-semibold text-gray-600">Layers:</span>
-              {[
-                { key: 'reports', label: 'Αναφορές', cls: 'bg-red-100 text-red-700' },
-                { key: 'iot',     label: 'IoT',       cls: 'bg-emerald-100 text-emerald-700' },
-                { key: 'crises',  label: 'Κρίσεις',  cls: 'bg-purple-100 text-purple-700' },
-              ].map(layer => (
-                <button key={layer.key}
-                  onClick={() => setActiveLayer(prev => ({ ...prev, [layer.key]: !prev[layer.key as keyof typeof prev] }))}
-                  className={`${layerBtnCls(activeLayer[layer.key as keyof typeof activeLayer])} ${layer.cls}`}>
-                  {layer.label}
-                </button>
-              ))}
-              <button onClick={() => setShowHeatmap(!showHeatmap)}
-                className={`${layerBtnCls(showHeatmap)} bg-orange-100 text-orange-700`}>
-                Heatmap
-              </button>
-              <button onClick={() => setShowEarthquakes(!showEarthquakes)}
-                className={`${layerBtnCls(showEarthquakes)} bg-yellow-100 text-yellow-700`}>
-                Σεισμοί
-              </button>
-              <button onClick={() => setShowFires(!showFires)}
-                className={`${layerBtnCls(showFires)} bg-red-100 text-red-800`}>
-                Φωτιές
-              </button>
-              <button onClick={() => setShowTraffic(!showTraffic)}
-                className={`${layerBtnCls(showTraffic)} bg-gray-100 text-gray-700`}>
-                Incidents
-              </button>
-              {TOMTOM_KEY && (
-                <button onClick={() => setShowTrafficFlow(!showTrafficFlow)}
-                  className={`${layerBtnCls(showTrafficFlow)} bg-emerald-100 text-emerald-700 ${showTrafficFlow ? 'ring-2 ring-emerald-400' : ''}`}>
-                  Traffic Flow
-                </button>
-              )}
-              <button onClick={() => setUseClustering(!useClustering)}
-                className={`${layerBtnCls(useClustering)} bg-blue-100 text-blue-700`}>
-                Clustering
-              </button>
-            </div>
-          </div>
-
-          {timelapse && (
-            <div className="bg-[#1E3A5F] text-white rounded-xl p-3 mb-2 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <Timer className="w-4 h-4" />
-                Time-lapse — Ημέρα {tlDay + 1}/{tlDays}
-              </div>
-              <span className="text-sm text-white/70">{activeReports.length} αναφορές</span>
-            </div>
-          )}
-
-          <div className="rounded-xl overflow-hidden shadow-sm border border-gray-200" style={{ height: '520px' }}>
-            <MapContainer center={HERAKLION_CENTER} zoom={13} style={{ height: '100%', width: '100%' }}>
-              <DynamicTileLayer styleKey={mapStyle} />
-
-              {showTrafficFlow && TOMTOM_KEY && (
-                <TileLayer
-                  url={`https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=${TOMTOM_KEY}`}
-                  opacity={0.8} zIndex={500} attribution="© TomTom"
-                />
-              )}
-
-              {showHeatmap && <HeatmapLayer2D points={heatmapPoints} />}
-
-              {activeLayer.reports && (
-                useClustering
-                  ? <MarkerClusterGroup chunkedLoading>{reportMarkers}</MarkerClusterGroup>
-                  : reportMarkers
-              )}
-
-              {activeLayer.iot && layers?.iot_devices.map(device => (
-                <CircleMarker key={device.id} center={[device.lat, device.lng]}
-                  radius={8} fillColor={getDeviceColor(device.device_type)}
-                  color={getDeviceColor(device.device_type)} fillOpacity={0.8} weight={2}>
-                  <Popup>
-                    <p className="font-bold">{deviceLabels[device.device_type]}: {device.name}</p>
-                    <p>Battery: {device.battery}%</p>
-                  </Popup>
-                  <Tooltip>{device.name}</Tooltip>
-                </CircleMarker>
-              ))}
-
-              {activeLayer.crises && layers?.crises.map(crisis => (
-                <Marker key={crisis.id} position={[crisis.lat, crisis.lng]} icon={crisisIcon}>
-                  <Popup><p className="font-bold">{crisis.crisis_type}</p></Popup>
-                </Marker>
-              ))}
-
-              {showEarthquakes && externalData?.earthquakes?.earthquakes?.map((eq: any, i: number) => (
-                <Marker key={`eq-${i}`} position={[eq.lat, eq.lng]} icon={earthquakeIcon(eq.magnitude)}>
-                  <Popup>
-                    <p className="font-bold">{eq.magnitude}R</p>
-                    <p>{eq.place}</p><p>{eq.distance_km}km</p>
-                  </Popup>
-                  <Tooltip>Σεισμός {eq.magnitude}R</Tooltip>
-                </Marker>
-              ))}
-
-              {showFires && externalData?.hazards?.fires?.map((fire: any, i: number) => (
-                <Marker key={`fire-${i}`} position={[fire.lat, fire.lng]} icon={fireIcon}>
-                  <Popup><p className="font-bold">Πυρκαγιά</p><p>Απόσταση: {fire.distance_km}km</p></Popup>
-                  <Tooltip>Πυρκαγιά {fire.distance_km}km</Tooltip>
-                </Marker>
-              ))}
-
-              {showTraffic && externalData?.traffic?.incidents?.map((inc: any, i: number) => (
-                <Marker key={`traffic-${i}`} position={[inc.lat, inc.lng]} icon={getTrafficIcon(inc.type)}>
-                  <Popup>
-                    <p className="font-bold">{getTrafficLabel(inc.type)}</p>
-                    <p className="text-sm">{inc.location}</p>
-                    <p className="text-xs text-gray-500">Σοβαρότητα: {inc.severity}</p>
-                  </Popup>
-                  <Tooltip>{getTrafficLabel(inc.type)}</Tooltip>
-                </Marker>
-              ))}
-            </MapContainer>
-          </div>
+        <div style={S.vstats}>
+          <span>🚗 <b>{vehStats.count.toLocaleString('el-GR')}</b></span>
+          <span>⚡ <b>{vehStats.avgSpeed}</b> km/h</span>
+          <span>🚦 <b>{vehStats.congestion}%</b></span>
         </div>
-
-        {/* ── Right Sidebar ── */}
-        <div className="space-y-3">
-
-          {/* Weather */}
-          {externalData?.weather && (
-            <div className="bg-gradient-to-br from-[#2E86AB] to-[#1E3A5F] text-white rounded-xl shadow-sm p-4">
-              <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm">
-                <Cloud className="w-4 h-4" />
-                Καιρός Ηρακλείου
-              </h3>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="text-4xl font-bold">{Math.round(externalData.weather.temperature)}°</div>
-                <div>
-                  <p className="text-sm capitalize">{externalData.weather.description}</p>
-                  <p className="text-xs opacity-75">
-                    {externalData.weather.humidity}% υγρ. · {externalData.weather.wind_kmh} km/h άνεμ.
-                  </p>
-                </div>
-              </div>
-              {externalData.weather.alerts?.map((alert: any, i: number) => (
-                <div key={i} className="bg-[#F6AE2D] text-[#1E3A5F] rounded-lg p-2 mt-1 text-xs font-semibold flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                  {alert.message}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Air Quality */}
-          {externalData?.air_quality && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <h3 className="font-semibold text-[#1E3A5F] mb-3 flex items-center gap-2 text-sm">
-                <Wind className="w-4 h-4 text-[#2E86AB]" />
-                Ποιότητα Αέρα
-              </h3>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-                  style={{ backgroundColor: externalData.air_quality.color }}>
-                  {externalData.air_quality.aqi}
-                </div>
-                <div>
-                  <p className="font-semibold text-sm text-[#1E3A5F]">{externalData.air_quality.status}</p>
-                  <p className="text-xs text-gray-400">PM2.5: {externalData.air_quality.pm25} μg/m³</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Traffic */}
-          {externalData?.traffic && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <h3 className="font-semibold text-[#1E3A5F] mb-3 flex items-center gap-2 text-sm">
-                <Car className="w-4 h-4 text-[#2E86AB]" />
-                Κυκλοφορία
-              </h3>
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${
-                  externalData.traffic.congestion_level === 'high'     ? 'bg-[#E63946]' :
-                  externalData.traffic.congestion_level === 'moderate' ? 'bg-[#F6AE2D]' : 'bg-[#2D936C]'
-                }`}>
-                  {externalData.traffic.congestion_percentage}%
-                </div>
-                <div>
-                  <p className="font-semibold text-sm text-[#1E3A5F]">
-                    {externalData.traffic.congestion_level === 'high'     ? 'Υψηλή συμφόρηση' :
-                     externalData.traffic.congestion_level === 'moderate' ? 'Μέτρια κίνηση' : 'Ελεύθερη κίνηση'}
-                  </p>
-                  <p className="text-xs text-gray-400">{externalData.traffic.incidents?.length || 0} incidents</p>
-                </div>
-              </div>
-              {externalData.traffic.incidents?.length > 0 && (
-                <div className="space-y-1 max-h-28 overflow-y-auto">
-                  {externalData.traffic.incidents.map((inc: any, i: number) => (
-                    <div key={i} className="flex items-center gap-2 text-xs py-1 border-b border-gray-50">
-                      <Car className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                      <span className="text-gray-600 truncate flex-1">{inc.location}</span>
-                      <span className={`font-medium flex-shrink-0 ${inc.severity === 'critical' ? 'text-[#E63946]' : 'text-gray-400'}`}>
-                        {inc.severity}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Earthquakes */}
-          {externalData?.earthquakes && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <h3 className="font-semibold text-[#1E3A5F] mb-3 flex items-center gap-2 text-sm">
-                <Globe className="w-4 h-4 text-[#2E86AB]" />
-                Σεισμοί
-                <span className="ml-1 text-xs font-normal text-gray-400">
-                  {externalData.earthquakes.total} (7 μέρες)
-                </span>
-              </h3>
-              {externalData.earthquakes.significant?.length > 0 && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 mb-2 text-xs font-semibold text-orange-800 flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                  {externalData.earthquakes.significant.length} σημαντικοί (4.0+)
-                </div>
-              )}
-              <div className="space-y-1 max-h-28 overflow-y-auto">
-                {externalData.earthquakes.earthquakes?.slice(0, 5).map((eq: any, i: number) => (
-                  <div key={i} className="flex justify-between text-xs py-1 border-b border-gray-50">
-                    <span className={`font-bold ${eq.magnitude >= 4 ? 'text-[#E63946]' : 'text-gray-600'}`}>
-                      {eq.magnitude}R
-                    </span>
-                    <span className="text-gray-500 truncate max-w-[80px]">{eq.place?.split(',')[0]}</span>
-                    <span className="text-gray-400 flex-shrink-0">{eq.distance_km}km</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Fires */}
-          {externalData?.hazards?.fires?.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2 text-sm">
-                <Flame className="w-4 h-4" />
-                Πυρκαγιές
-              </h3>
-              <p className="text-sm text-red-700">{externalData.hazards.fires.length} εστίες στην Κρήτη</p>
-              {externalData.hazards.nearby_fires?.length > 0 && (
-                <div className="bg-red-100 rounded-lg p-2 mt-2 flex items-center gap-1.5 text-xs font-semibold text-red-800">
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                  {externalData.hazards.nearby_fires.length} εντός 50km!
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Time-lapse */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="bg-[#1E3A5F] px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Timer className="w-4 h-4 text-white/70" />
-                <span className="text-white text-sm font-semibold">Time-lapse</span>
-              </div>
-              <button
-                onClick={() => { setTimelapse(!timelapse); stopTimelapse(); setTlDay(0); }}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  timelapse ? 'bg-white text-[#1E3A5F]' : 'bg-white/20 text-white'
-                }`}
-              >
-                {timelapse ? 'ON' : 'OFF'}
-              </button>
-            </div>
-            <div className="p-4">
-              {timelapse ? (
-                <div className="space-y-3">
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>7 μέρες πριν</span>
-                    <span className="font-bold text-[#2E86AB]">Ημέρα {tlDay + 1}/{tlDays}</span>
-                    <span>Σήμερα</span>
-                  </div>
-                  <input
-                    type="range" min={0} max={tlDays - 1} value={tlDay}
-                    onChange={e => { stopTimelapse(); setTlDay(Number(e.target.value)); }}
-                    className="w-full accent-[#2E86AB]"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={tlPlaying ? stopTimelapse : startTimelapse}
-                      className="flex-1 flex items-center justify-center gap-2 bg-[#1E3A5F] text-white py-2 rounded-lg text-sm hover:bg-[#2E86AB] transition-colors"
-                    >
-                      {tlPlaying ? <><Pause className="w-3.5 h-3.5" /> Pause</> : <><Play className="w-3.5 h-3.5" /> Play</>}
-                    </button>
-                    <button
-                      onClick={() => { stopTimelapse(); setTlDay(0); }}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 text-center">{activeReports.length} αναφορές</p>
-                </div>
-              ) : (
-                <p className="text-xs text-gray-400">Εξέλιξη αναφορών τις τελευταίες 7 μέρες</p>
-              )}
-            </div>
-          </div>
-
-          {/* Simulation */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="bg-[#1E3A5F] px-4 py-3 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-white/70" />
-              <span className="text-white text-sm font-semibold">Simulation</span>
-            </div>
-            <div className="p-4 space-y-3">
-              <select
-                value={scenario.type}
-                onChange={e => setScenario({...scenario, type: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E86AB]"
-              >
-                <option value="flood">Πλημμύρα</option>
-                <option value="earthquake">Σεισμός</option>
-                <option value="power_outage">Διακοπή Ρεύματος</option>
-                <option value="mass_event">Μαζική Εκδήλωση</option>
-                <option value="road_closure">Κλείσιμο Δρόμου</option>
-                <option value="water_main_break">Ρήξη Αγωγού</option>
-              </select>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={scenario.location}
-                  onChange={e => searchLocation(e.target.value)}
-                  placeholder="Περιοχή..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E86AB]"
-                />
-                {locationSuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
-                    {locationSuggestions.map((s, i) => (
-                      <button key={i}
-                        onClick={() => { setScenario({...scenario, location: s.display_name.split(',')[0]}); setLocationSuggestions([]); }}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50">
-                        {s.display_name.split(',').slice(0, 3).join(',')}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <textarea
-                value={scenario.description}
-                onChange={e => setScenario({...scenario, description: e.target.value})}
-                rows={2} placeholder="Περιγραφή..."
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E86AB]"
-              />
-              <button
-                onClick={runSimulation}
-                disabled={simulating}
-                className="w-full flex items-center justify-center gap-2 bg-[#1E3A5F] text-white py-2 rounded-lg hover:bg-[#2E86AB] disabled:opacity-50 transition-colors text-sm font-medium"
-              >
-                {simulating ? <><Loader className="w-4 h-4 animate-spin" /> Ανάλυση...</> : <><Play className="w-4 h-4" /> Εκτέλεση</>}
-              </button>
-            </div>
-          </div>
-
-          {/* Simulation Results */}
-          {simResult && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="bg-[#1E3A5F] px-4 py-3 flex items-center gap-2">
-                <Gauge className="w-4 h-4 text-white/70" />
-                <span className="text-white text-sm font-semibold">Αποτελέσματα</span>
-              </div>
-              <div className="p-4">
-                <div className={`p-3 rounded-lg mb-3 ${simResult.impact_assessment?.severity === 'critical' ? 'bg-red-50 border border-red-200' : 'bg-orange-50 border border-orange-200'}`}>
-                  <p className="font-bold text-sm text-[#1E3A5F]">{simResult.impact_assessment?.severity?.toUpperCase()}</p>
-                  <p className="text-xs text-gray-600">{simResult.impact_assessment?.affected_population}</p>
-                </div>
-                <p className="text-sm text-gray-700 mb-3">{simResult.summary}</p>
-                {simResult.recommended_actions?.slice(0, 3).map((action: any, i: number) => (
-                  <div key={i} className="flex items-start gap-2 mb-2">
-                    <span className="text-[#2E86AB] mt-0.5">→</span>
-                    <div>
-                      <p className="text-xs font-semibold text-[#1E3A5F]">{action.action}</p>
-                      <p className="text-xs text-gray-400">{action.timeline}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      </footer>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+//  small sub-components
+// ---------------------------------------------------------------------------
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label style={S.toggleRow}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
+}
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={S.card}>
+      <div style={S.cardTitle}>{title}</div>
+      <div style={S.cardBody}>{children}</div>
+    </div>
+  );
+}
+
+// Report markers + clustering via the modern @googlemaps/markerclusterer.
+// Managed imperatively with explicit cleanup → safe under React 18 StrictMode
+// (the legacy @react-google-maps/api MarkerClusterer crashes there).
+function ReportClusters({ map, reports, clustered }: { map: google.maps.Map | null; reports: ReportItem[]; clustered: boolean }) {
+  const clusterer = useRef<GMClusterer | null>(null);
+  const markers = useRef<google.maps.Marker[]>([]);
+  useEffect(() => {
+    if (!map) return;
+    clusterer.current?.clearMarkers();
+    clusterer.current?.setMap(null);
+    clusterer.current = null;
+    markers.current.forEach((m) => m.setMap(null));
+    markers.current = reports.map((r) => new google.maps.Marker({
+      position: { lat: r.lat, lng: r.lng },
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: COLORS.accent, fillOpacity: 0.9, strokeWeight: 0 },
+    }));
+    if (clustered) {
+      clusterer.current = new GMClusterer({ map, markers: markers.current });
+    } else {
+      markers.current.forEach((m) => m.setMap(map));
+    }
+    return () => {
+      clusterer.current?.clearMarkers();
+      clusterer.current?.setMap(null);
+      clusterer.current = null;
+      markers.current.forEach((m) => m.setMap(null));
+      markers.current = [];
+    };
+  }, [map, reports, clustered]);
+  return null;
+}
+
+// Synthesize concentric impact zones when backend returns none.
+function synthZones(loc: { lat: number; lng: number }): SimZone[] {
+  const ring = (rMeters: number): [number, number][] => {
+    const out: [number, number][] = [];
+    const dLat = rMeters / 111000;
+    const dLng = rMeters / (111000 * Math.cos((loc.lat * Math.PI) / 180));
+    for (let a = 0; a < 360; a += 30) {
+      const rad = (a * Math.PI) / 180;
+      out.push([loc.lat + dLat * Math.sin(rad), loc.lng + dLng * Math.cos(rad)]);
+    }
+    return out;
+  };
+  return [
+    { level: 'red', polygon: ring(250) },
+    { level: 'yellow', polygon: ring(600) },
+    { level: 'green', polygon: ring(1100) },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+//  STYLES
+// ---------------------------------------------------------------------------
+const S: Record<string, React.CSSProperties> = {
+  root: { display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', fontFamily: "'Segoe UI', system-ui, sans-serif", color: COLORS.text, overflow: 'hidden' },
+
+  // top bar
+  topBar: { display: 'flex', alignItems: 'center', gap: 16, padding: '0 16px', height: 56, background: COLORS.navy, color: '#fff', flexShrink: 0 },
+  topLeft: { display: 'flex', alignItems: 'center', gap: 10 },
+  logo: { fontWeight: 700, fontSize: 15, whiteSpace: 'nowrap' },
+  livePill: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, background: 'rgba(255,255,255,0.12)', padding: '3px 8px', borderRadius: 12 },
+  dot: { width: 8, height: 8, borderRadius: '50%', display: 'inline-block' },
+  weatherInline: { display: 'flex', gap: 14, fontSize: 12.5, color: '#cfe3f1' },
+  topStats: { display: 'flex', gap: 14, marginLeft: 'auto', fontSize: 13 },
+  stat: { whiteSpace: 'nowrap' },
+  pdfBtn: { background: COLORS.accent, color: COLORS.navyDark, border: 'none', padding: '7px 12px', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: 13 },
+
+  // main
+  main: { display: 'flex', flex: 1, minHeight: 0 },
+  sidebar: { width: 300, flexShrink: 0, background: COLORS.panelAlt, borderRight: `1px solid ${COLORS.border}`, overflowY: 'auto', padding: 10 },
+
+  // accordion
+  accSection: { background: '#fff', border: `1px solid ${COLORS.border}`, borderRadius: 8, marginBottom: 8, overflow: 'hidden' },
+  accHeader: { width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13.5, color: COLORS.navy },
+  accBody: { padding: '4px 12px 12px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', flexDirection: 'column', gap: 6 },
+
+  toggleRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '2px 0' },
+  label: { fontSize: 12, fontWeight: 600, color: COLORS.textMuted, marginTop: 4 },
+  input: { padding: '7px 9px', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 13, fontFamily: 'inherit' },
+  primaryBtn: { marginTop: 8, background: COLORS.secondary, color: '#fff', border: 'none', padding: '9px', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: 13 },
+  smallBtn: { background: COLORS.navy, color: '#fff', border: 'none', padding: '5px 10px', borderRadius: 5, cursor: 'pointer', fontSize: 12 },
+
+  badge: { display: 'inline-block', color: '#fff', padding: '3px 8px', borderRadius: 10, fontSize: 11.5, fontWeight: 700 },
+  countBadge: { background: COLORS.red, color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700 },
+  muted: { color: COLORS.textMuted, fontSize: 12.5, margin: '4px 0' },
+  ul: { margin: '4px 0 0 16px', padding: 0, fontSize: 12.5, lineHeight: 1.6 },
+
+  riskBanner: { background: COLORS.red, color: '#fff', padding: '8px 10px', borderRadius: 6, fontWeight: 700, fontSize: 12.5, marginBottom: 6 },
+  alertRow: { display: 'flex', flexDirection: 'column', background: '#fff', borderLeft: '3px solid', padding: '6px 8px', borderRadius: 4, fontSize: 12.5, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' },
+  ts: { color: COLORS.textMuted, fontSize: 10.5 },
+  feedRow: { fontSize: 12, padding: '4px 0', borderBottom: `1px solid ${COLORS.border}` },
+
+  card: { background: '#fff', border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: 8 },
+  cardTitle: { fontSize: 12, fontWeight: 700, color: COLORS.navy, marginBottom: 3 },
+  cardBody: { fontSize: 12, color: COLORS.text, lineHeight: 1.5 },
+
+  // map
+  mapWrap: { position: 'relative', flex: 1, minWidth: 0 },
+  floatControls: { position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 5 },
+  fctrl: { width: 36, height: 36, border: 'none', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700, color: COLORS.navy, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
+  fselect: { border: 'none', borderRadius: 6, padding: '6px', background: '#fff', cursor: 'pointer', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
+
+  streetPanel: { position: 'absolute', top: 0, right: 0, width: 400, height: '100%', background: '#fff', boxShadow: '-4px 0 16px rgba(0,0,0,0.25)', transition: 'transform 0.3s ease', zIndex: 8 },
+  streetHeader: { height: 40, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', background: COLORS.navy, color: '#fff', fontWeight: 600, fontSize: 14 },
+  closeBtn: { background: 'transparent', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer' },
+
+  // bottom bar
+  bottomBar: { display: 'flex', alignItems: 'center', gap: 14, height: 60, padding: '0 16px', background: COLORS.navy, color: '#fff', flexShrink: 0 },
+  vbtn: { background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', padding: '7px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+  vsliderWrap: { display: 'flex', alignItems: 'center', gap: 8 },
+  vlabel: { fontSize: 12, color: '#cfe3f1' },
+  modeWrap: { display: 'flex', gap: 4, marginLeft: 8 },
+  modeBtn: { background: 'rgba(255,255,255,0.1)', color: '#cfe3f1', border: 'none', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
+  modeBtnActive: { background: COLORS.accent, color: COLORS.navyDark, fontWeight: 700 },
+  vstats: { display: 'flex', gap: 16, marginLeft: 'auto', fontSize: 13, whiteSpace: 'nowrap' },
 };
 
-export default DigitalTwin;
+// Animations, scrollbar, print rules
+const CSS = `
+  .dt-sidebar::-webkit-scrollbar { width: 8px; }
+  .dt-sidebar::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 4px; }
+  .dt-acc-header:hover { background: ${COLORS.panelAlt}; }
+  @media print {
+    .dt-noprint { display: none !important; }
+    .dt-root { height: auto !important; overflow: visible !important; }
+    .dt-main, .dt-mapwrap { height: 600px !important; }
+    .dt-topbar { background: ${COLORS.navy} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+`;

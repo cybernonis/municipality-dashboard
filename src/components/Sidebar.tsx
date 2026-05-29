@@ -8,7 +8,7 @@ import {
   Settings, Bell, LogOut, FileSpreadsheet,
   ChevronLeft, ChevronRight, BellOff,
   Flame, Droplets, Wind, Globe, FileCheck,
-  Crown, Gamepad2,
+  Crown, Gamepad2, Megaphone, CalendarCheck,
 } from 'lucide-react';
 
 const WS_URL = (process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000')
@@ -73,10 +73,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'ΔΙΑΧΕΙΡΙΣΗ',
     items: [
-      { path: '/departments', label: 'Τμήματα',        Icon: Building2 },
-      { path: '/staff',       label: 'Προσωπικό',      Icon: Users },
-      { path: '/sla',         label: 'SLA',            Icon: Clock },
-      { path: '/performance', label: 'Performance',    Icon: Trophy },
+      { path: '/departments',  label: 'Τμήματα',        Icon: Building2 },
+      { path: '/staff',        label: 'Προσωπικό',      Icon: Users },
+      { path: '/appointments', label: 'Ραντεβού',       Icon: CalendarCheck },
+      { path: '/sla',          label: 'SLA',            Icon: Clock },
+      { path: '/performance',  label: 'Performance',    Icon: Trophy },
     ],
   },
   {
@@ -96,8 +97,9 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'ΕΚΤΑΚΤΑ & ΣΥΜΜΕΤΟΧΗ',
     items: [
-      { path: '/crisis',        label: 'Crisis',       Icon: AlertTriangle },
-      { path: '/participation', label: 'Συμμετοχή',   Icon: MessageSquare },
+      { path: '/crisis',         label: 'Crisis',          Icon: AlertTriangle },
+      { path: '/participation',  label: 'Συμμετοχή',      Icon: MessageSquare },
+      { path: '/announcements',  label: 'Ανακοινώσεις',   Icon: Megaphone },
     ],
   },
   {

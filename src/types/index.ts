@@ -33,3 +33,28 @@ export interface User {
 
 export type ReportStatus = 'submitted' | 'assigned' | 'in_progress' | 'completed';
 export type Severity = 'low' | 'medium' | 'high';
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  created_at: string;
+}
+
+export type AnnouncementCategory = 'general' | 'emergency' | 'technical' | 'events';
+
+export interface Appointment {
+  id: string;
+  citizen_name?: string;
+  citizen_email?: string;
+  department_id?: string;
+  departments?: { name: string };
+  date: string;
+  time?: string;
+  status: AppointmentStatus;
+  notes?: string;
+  created_at: string;
+}
+
+export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';

@@ -73,4 +73,35 @@ export const updateCrisis = async (id: string, data: any) => {
   return response.data;
 };
 
+// ANNOUNCEMENTS
+export const getAnnouncements = async (): Promise<any[]> => {
+  const response = await api.get('/announcements/');
+  // Backend may return a pagination envelope { data: [...], total, page, ... }
+  // or a plain array. Normalise to array in all cases.
+  const payload = response.data?.data ?? response.data;
+  return Array.isArray(payload) ? payload : Object.values(payload || {});
+};
+
+export const createAnnouncement = async (data: { title: string; body: string; category: string }) => {
+  const response = await api.post('/announcements/', data);
+  return response.data;
+};
+
+export const deleteAnnouncement = async (id: string) => {
+  const response = await api.delete(`/announcements/${id}`);
+  return response.data;
+};
+
+// APPOINTMENTS
+export const getAppointments = async (): Promise<any[]> => {
+  const response = await api.get('/appointments/');
+  const payload = response.data?.data ?? response.data;
+  return Array.isArray(payload) ? payload : Object.values(payload || {});
+};
+
+export const updateAppointment = async (id: string, data: { status: string }) => {
+  const response = await api.patch(`/appointments/${id}`, data);
+  return response.data;
+};
+
 export default api;

@@ -26,6 +26,8 @@ import IoT from './pages/IoT';
 import DigitalTwin from './pages/DigitalTwin';
 import Leaderboard from './pages/Leaderboard';
 import GamificationManagement from './pages/GamificationManagement';
+import Announcements from './pages/Announcements';
+import Appointments from './pages/Appointments';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 const isLoggedIn = () => !!localStorage.getItem('token');
@@ -97,6 +99,8 @@ function App() {
                 <Route path="/staff"             element={<Staff />} />
                 <Route path="/leaderboard"      element={<Leaderboard />} />
                 <Route path="/gamification"     element={<GamificationManagement />} />
+                <Route path="/announcements"    element={<Announcements />} />
+                <Route path="/appointments"     element={<Appointments />} />
               </Routes>
               <Chatbot />
               <AlertBanner />
