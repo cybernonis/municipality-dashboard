@@ -27,6 +27,7 @@ import {
   Circle,
   Polygon,
   InfoWindow,
+  Autocomplete,
   useJsApiLoader,
 } from '@react-google-maps/api';
 import { MarkerClusterer as GMClusterer } from '@googlemaps/markerclusterer';
@@ -44,7 +45,7 @@ const DEFAULT_TILT = 0;
 // Stable refs (must NOT be re-created each render → re-load warning)
 // No extra libraries — keeps the loader from requesting Places/Visualization,
 // which need separate APIs enabled in GCP. Geocoding uses Nominatim (OSM).
-const LIBRARIES: ('places')[] = [];
+const LIBRARIES: ('places')[] = ['places'];
 
 const BACKEND = 'https://municipality-backend-production.up.railway.app';
 const WS_URL = 'wss://municipality-backend-production.up.railway.app/ws';
@@ -707,9 +708,11 @@ export default function DigitalTwin() {
   const [scenario, setScenario] = useState<ScenarioKey>('flood');
   const [simLocation, setSimLocation] = useState('');
   const [simLatLng, setSimLatLng] = useState<{ lat: number; lng: number } | null>(null);
+  const [simCoords, setSimCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [simDesc, setSimDesc] = useState('');
   const [simRunning, setSimRunning] = useState(false);
   const [simResult, setSimResult] = useState<SimResult | null>(null);
+  const acRef = useRef<google.maps.places.Autocomplete | null>(null);
   const [simZones, setSimZones] = useState<SimZone[]>([]);
 
   // ---- Map interaction ----
@@ -892,7 +895,7 @@ export default function DigitalTwin() {
     setSimRunning(true);
     setSimResult(null);
     setSimZones([]);
-    let loc = simLatLng;
+    let loc = simCoords ?? simLatLng;
     if (!loc && simLocation) {
       loc = await geocodeLocation(simLocation);
       if (loc) setSimLatLng(loc);
@@ -926,7 +929,7 @@ export default function DigitalTwin() {
       setSimRunning(false);
       setOpen((p) => ({ ...p, results: true }));
     }
-  }, [scenario, simDesc, simLatLng, simLocation, geocodeLocation]);
+  }, [scenario, simDesc, simCoords, simLatLng, simLocation, geocodeLocation]);
 
   // -------------------------------------------------------------------------
   //  MAP CLICK → InfoWindow analytics
@@ -1098,8 +1101,26 @@ export default function DigitalTwin() {
               {SCENARIOS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
             <label style={S.label}>Τοποθεσία</label>
-            <input style={S.input} placeholder="π.χ. Λιμάνι Ηρακλείου" value={simLocation}
-              onChange={(e) => { setSimLocation(e.target.value); setSimLatLng(null); }} />
+            <Autocomplete
+              onLoad={(ac) => { acRef.current = ac; }}
+              onPlaceChanged={() => {
+                const place = acRef.current?.getPlace();
+                const loc = place?.geometry?.location;
+                if (loc) setSimCoords({ lat: loc.lat(), lng: loc.lng() });
+                setSimDesc(place?.formatted_address || place?.name || '');
+                setSimLocation(place?.formatted_address || place?.name || simLocation);
+              }}
+              options={{
+                componentRestrictions: { country: 'gr' },
+                bounds: new google.maps.LatLngBounds(
+                  { lat: 35.28, lng: 25.05 }, { lat: 35.40, lng: 25.25 },
+                ),
+                fields: ['geometry', 'formatted_address', 'name'],
+              }}
+            >
+              <input style={S.input} placeholder="π.χ. Λιμάνι Ηρακλείου" value={simLocation}
+                onChange={(e) => { setSimLocation(e.target.value); setSimLatLng(null); setSimCoords(null); }} />
+            </Autocomplete>
             <label style={S.label}>Περιγραφή</label>
             <textarea style={{ ...S.input, height: 60, resize: 'vertical' }} value={simDesc} onChange={(e) => setSimDesc(e.target.value)} />
             <button style={S.primaryBtn} disabled={simRunning} onClick={runSimulation}>
