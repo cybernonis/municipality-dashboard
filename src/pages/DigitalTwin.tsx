@@ -1311,42 +1311,6 @@ export default function DigitalTwin() {
             }}><Maximize size={16} /></button>
           </div>
 
-          {/* External data permanent right column */}
-          <div className="dt-extcol" style={S.extCol}>
-            <div style={S.extCard}>
-              <div style={S.extCardHead}><Cloud size={16} color={COLORS.secondary} /><span>Καιρός</span></div>
-              <div style={S.extCardBody}>
-                {wx.temperature != null
-                  ? `${Math.round(wx.temperature)}°C · ${wx.description ?? ''} · υγρ. ${wx.humidity}% · άνεμος ${Math.round(wx.wind_kmh ?? (wx.wind_speed ?? 0) * 3.6)}km/h`
-                  : 'N/A'}
-              </div>
-            </div>
-            <div style={S.extCard}>
-              <div style={S.extCardHead}><Wind size={16} color={COLORS.secondary} /><span>Ποιότητα Αέρα</span></div>
-              <div style={S.extCardBody}>
-                {external.air_quality ? `AQI ${external.air_quality.aqi} (${external.air_quality.status ?? '—'}) · PM2.5 ${external.air_quality.pm25 ?? '—'}` : 'N/A'}
-              </div>
-            </div>
-            <div style={S.extCard}>
-              <div style={S.extCardHead}><Car size={16} color={COLORS.secondary} /><span>Κίνηση</span></div>
-              <div style={S.extCardBody}>
-                {incidents.length ? incidents.map((inc, k) => <div key={k}>• {inc.type ?? inc.description ?? '—'}{inc.location ? ` — ${inc.location}` : ''}</div>) : 'Χωρίς συμβάντα'}
-              </div>
-            </div>
-            <div style={S.extCard}>
-              <div style={S.extCardHead}><Activity size={16} color={COLORS.accent} /><span>Σεισμοί</span></div>
-              <div style={S.extCardBody}>
-                {quakes.length ? quakes.slice(0, 4).map((q, k) => <div key={k}>• {num(q.magnitude) ?? num(q.mag) ?? '—'}R — {q.place ?? q.location ?? '—'}</div>) : 'Κανένας'}
-              </div>
-            </div>
-            <div style={S.extCard}>
-              <div style={S.extCardHead}><Flame size={16} color={COLORS.red} /><span>Πυρκαγιές / Κίνδυνοι</span></div>
-              <div style={S.extCardBody}>
-                {hazardsArr.length ? hazardsArr.map((h, k) => <div key={k}>• {h.place ?? h.location ?? h.title ?? 'Πυρκαγιά'}</div>) : 'Καμία'}
-              </div>
-            </div>
-          </div>
-
           {/* Street View slide-in panel */}
           <div style={{ ...S.streetPanel, transform: streetView ? 'translateX(0)' : 'translateX(110%)' }} className="dt-noprint">
             <div style={S.streetHeader}>
@@ -1356,6 +1320,42 @@ export default function DigitalTwin() {
             <div ref={streetDivRef} style={{ width: '100%', height: 'calc(100% - 40px)' }} />
           </div>
         </div>
+
+        {/* ---------------------- RIGHT SIDEBAR — external data ---------------------- */}
+        <aside className="dt-rightsidebar" style={S.rightSidebar}>
+          <div style={S.extCard}>
+            <div style={S.extCardHead}><Cloud size={16} color={COLORS.secondary} /><span>Καιρός</span></div>
+            <div style={S.extCardBody}>
+              {wx.temperature != null
+                ? `${Math.round(wx.temperature)}°C · ${wx.description ?? ''} · υγρ. ${wx.humidity}% · άνεμος ${Math.round(wx.wind_kmh ?? (wx.wind_speed ?? 0) * 3.6)}km/h`
+                : 'N/A'}
+            </div>
+          </div>
+          <div style={S.extCard}>
+            <div style={S.extCardHead}><Wind size={16} color={COLORS.secondary} /><span>Ποιότητα Αέρα</span></div>
+            <div style={S.extCardBody}>
+              {external.air_quality ? `AQI ${external.air_quality.aqi} (${external.air_quality.status ?? '—'}) · PM2.5 ${external.air_quality.pm25 ?? '—'}` : 'N/A'}
+            </div>
+          </div>
+          <div style={S.extCard}>
+            <div style={S.extCardHead}><Car size={16} color={COLORS.secondary} /><span>Κίνηση</span></div>
+            <div style={S.extCardBody}>
+              {incidents.length ? incidents.map((inc, k) => <div key={k}>• {inc.type ?? inc.description ?? '—'}{inc.location ? ` — ${inc.location}` : ''}</div>) : 'Χωρίς συμβάντα'}
+            </div>
+          </div>
+          <div style={S.extCard}>
+            <div style={S.extCardHead}><Activity size={16} color={COLORS.accent} /><span>Σεισμοί</span></div>
+            <div style={S.extCardBody}>
+              {quakes.length ? quakes.slice(0, 4).map((q, k) => <div key={k}>• {num(q.magnitude) ?? num(q.mag) ?? '—'}R — {q.place ?? q.location ?? '—'}</div>) : 'Κανένας'}
+            </div>
+          </div>
+          <div style={S.extCard}>
+            <div style={S.extCardHead}><Flame size={16} color={COLORS.red} /><span>Πυρκαγιές / Κίνδυνοι</span></div>
+            <div style={S.extCardBody}>
+              {hazardsArr.length ? hazardsArr.map((h, k) => <div key={k}>• {h.place ?? h.location ?? h.title ?? 'Πυρκαγιά'}</div>) : 'Καμία'}
+            </div>
+          </div>
+        </aside>
       </div>
 
       {/* ============================ BOTTOM BAR ============================ */}
@@ -1517,9 +1517,9 @@ const S: Record<string, React.CSSProperties> = {
 
   // map
   mapWrap: { position: 'relative', flex: 1, minWidth: 0 },
-  floatControls: { position: 'absolute', top: 12, left: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 5 },
-  extCol: { position: 'absolute', top: 16, right: 16, width: 300, maxHeight: 'calc(100% - 32px)', overflowY: 'auto' as const, zIndex: 4, display: 'flex', flexDirection: 'column' as const, gap: 12, pointerEvents: 'auto' as const },
-  extCard: { background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.12)', padding: 14 },
+  floatControls: { position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 5 },
+  rightSidebar: { width: 320, flexShrink: 0, overflowY: 'auto' as const, background: '#F8FAFC', borderLeft: `1px solid ${COLORS.border}`, padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 12 },
+  extCard: { background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.08)', padding: 14 },
   extCardHead: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontWeight: 700, fontSize: 13, color: COLORS.navy },
   extCardBody: { fontSize: 12, color: COLORS.text, lineHeight: 1.6 },
   fctrl: { width: 36, height: 36, border: 'none', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700, color: COLORS.navy, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
@@ -1545,26 +1545,23 @@ const CSS = `
   .dt-sidebar::-webkit-scrollbar { width: 8px; }
   .dt-sidebar::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 4px; }
   .dt-acc-header:hover { background: ${COLORS.panelAlt}; }
-  .dt-extcol::-webkit-scrollbar { width: 5px; }
-  .dt-extcol::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 3px; }
+  .dt-rightsidebar::-webkit-scrollbar { width: 5px; }
+  .dt-rightsidebar::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 3px; }
   @media (max-width: 767px) {
-    .dt-extcol {
-      top: auto !important;
-      right: 0 !important;
-      bottom: 0 !important;
-      left: 0 !important;
+    .dt-main { flex-direction: column !important; }
+    .dt-mapwrap { flex: 0 0 55vh !important; min-height: 55vh !important; }
+    .dt-rightsidebar {
       width: 100% !important;
-      max-height: 45% !important;
+      border-left: none !important;
+      border-top: 1px solid ${COLORS.border} !important;
       flex-direction: row !important;
       flex-wrap: nowrap !important;
       overflow-x: auto !important;
       overflow-y: hidden !important;
       padding: 8px !important;
       gap: 8px !important;
-      background: rgba(244,246,248,0.97) !important;
-      border-top: 1px solid ${COLORS.border} !important;
     }
-    .dt-extcol > * {
+    .dt-rightsidebar > * {
       flex: 0 0 220px !important;
       min-width: 220px !important;
     }
