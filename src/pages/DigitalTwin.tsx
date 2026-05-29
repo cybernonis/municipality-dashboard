@@ -209,6 +209,13 @@ interface AlertEntry {
   text: string;
   ts: number;
 }
+interface TrafficLiveData {
+  updated_at: string;
+  congestion_level: 'low' | 'medium' | 'high';
+  avg_jam_factor: number;
+  segments: { points: { lat: number; lng: number }[]; jamFactor: number }[];
+  hotspots: { description: string; jamFactor: number; lat: number; lng: number }[];
+}
 type ScenarioKey = 'flood' | 'earthquake' | 'power' | 'event';
 
 // ---------------------------------------------------------------------------
@@ -734,6 +741,10 @@ export default function DigitalTwin() {
   const [vehMode, setVehMode] = useState<SimMode>('normal');
   const [vehStats, setVehStats] = useState<VehicleStats>({ count: 0, avgSpeed: 0, congestion: 0 });
 
+  // ---- Traffic live (widget) ----
+  const [trafficLive, setTrafficLive] = useState<TrafficLiveData | null>(null);
+  const [trafficError, setTrafficError] = useState(false);
+
   // ---- Time-lapse ----
   const [tlDay, setTlDay] = useState(6); // 0..6 (today = 6)
   const [tlPlaying, setTlPlaying] = useState(false);
@@ -1027,6 +1038,26 @@ export default function DigitalTwin() {
       clearLines();
     };
   }, [mapObj, showHereTraffic]);
+
+  // -------------------------------------------------------------------------
+  //  TRAFFIC LIVE — widget feed (badge + hotspots), separate from polylines
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const fetchTrafficLive = async () => {
+      try {
+        const res = await fetch(`${BACKEND}/traffic/live`);
+        if (!res.ok) { setTrafficError(true); return; }
+        const data: TrafficLiveData = await res.json();
+        setTrafficLive(data);
+        setTrafficError(false);
+      } catch {
+        setTrafficError(true);
+      }
+    };
+    fetchTrafficLive();
+    const interval = window.setInterval(fetchTrafficLive, 120_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   // -------------------------------------------------------------------------
   //  RENDER GUARDS
@@ -1337,6 +1368,75 @@ export default function DigitalTwin() {
               {incidents.length ? incidents.slice(0, 5).map((inc, k) => <div key={k}>• {inc.type ?? inc.description ?? '—'}{inc.location ? ` — ${inc.location}` : ''}</div>) : 'Χωρίς συμβάντα'}
             </div>
           </div>
+
+          {/* ---- Traffic Live Widget ---- */}
+          <div style={S.extCard}>
+            <div style={S.extCardHead}>
+              <Car size={16} color={COLORS.secondary} />
+              <span>Κίνηση Live</span>
+              {trafficLive && (
+                <span style={{
+                  marginLeft: 'auto',
+                  background: trafficLive.congestion_level === 'high' ? COLORS.red : trafficLive.congestion_level === 'medium' ? COLORS.accent : COLORS.green,
+                  color: '#fff',
+                  borderRadius: 10,
+                  padding: '2px 8px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                }}>
+                  {trafficLive.congestion_level === 'high' ? 'Υψηλή' : trafficLive.congestion_level === 'medium' ? 'Μέτρια' : 'Χαμηλή'}
+                </span>
+              )}
+            </div>
+            <div style={S.extCardBody}>
+              {trafficError ? (
+                <span style={{ color: COLORS.textMuted }}>Σφάλμα φόρτωσης</span>
+              ) : !trafficLive ? (
+                <span style={{ color: COLORS.textMuted }}>Φόρτωση…</span>
+              ) : (
+                <>
+                  {trafficLive.hotspots.length === 0 ? (
+                    <div style={{ color: COLORS.green, fontSize: 12 }}>Καμία σημαντική καθυστέρηση</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {[...trafficLive.hotspots]
+                        .sort((a, b) => b.jamFactor - a.jamFactor)
+                        .map((h, i) => (
+                          <div
+                            key={i}
+                            onClick={() => {
+                              mapRef.current?.panTo({ lat: h.lat, lng: h.lng });
+                              mapRef.current?.setZoom(17);
+                            }}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '4px 6px',
+                              borderRadius: 5,
+                              cursor: 'pointer',
+                              background: '#FEF2F2',
+                              fontSize: 12,
+                              gap: 6,
+                            }}
+                          >
+                            <span style={{ color: COLORS.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.description}</span>
+                            <span style={{ background: COLORS.red, color: '#fff', borderRadius: 8, padding: '1px 6px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              JF {h.jamFactor.toFixed(1)}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, color: COLORS.textMuted, fontSize: 11 }}>
+                    <Clock size={11} />
+                    Ενημερώθηκε: {(() => { try { return new Date(trafficLive.updated_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' }); } catch { return trafficLive.updated_at; } })()}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
           <div style={S.extCard}>
             <div style={S.extCardHead}><Activity size={16} color={COLORS.accent} /><span>Σεισμοί</span></div>
             <div style={S.extCardBody}>
@@ -1480,9 +1580,9 @@ const S: Record<string, React.CSSProperties> = {
   stat: { whiteSpace: 'nowrap' },
   pdfBtn: { background: COLORS.accent, color: COLORS.navyDark, border: 'none', padding: '7px 12px', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: 13 },
 
-  // main — 3-column flex row
-  main: { display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, overflow: 'hidden' },
-  sidebar: { width: 340, flexShrink: 0, height: '100%', background: COLORS.panelAlt, borderRight: `1px solid ${COLORS.border}`, overflowY: 'auto', padding: 10, boxSizing: 'border-box' },
+  // main — full-width map, sidebars as absolute overlays
+  main: { display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' },
+  sidebar: { position: 'absolute', left: 0, top: 0, width: 340, height: '100%', background: COLORS.panelAlt, borderRight: `1px solid ${COLORS.border}`, overflowY: 'auto', padding: 10, boxSizing: 'border-box', zIndex: 10, boxShadow: '2px 0 16px rgba(0,0,0,0.18)' },
 
   // accordion
   accSection: { background: '#fff', border: `1px solid ${COLORS.border}`, borderRadius: 8, marginBottom: 8, overflow: 'hidden' },
@@ -1512,7 +1612,7 @@ const S: Record<string, React.CSSProperties> = {
   // map
   mapWrap: { position: 'relative', flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' },
   floatControls: { position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 5 },
-  rightSidebar: { width: 320, flexShrink: 0, height: '100%', overflowY: 'auto' as const, background: '#F8FAFC', borderLeft: `1px solid ${COLORS.border}`, padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 12, boxSizing: 'border-box' as const },
+  rightSidebar: { position: 'absolute' as const, right: 0, top: 0, width: 320, height: '100%', overflowY: 'auto' as const, background: '#F8FAFC', borderLeft: `1px solid ${COLORS.border}`, padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 12, boxSizing: 'border-box' as const, zIndex: 10, boxShadow: '-2px 0 16px rgba(0,0,0,0.18)' },
   extCard: { background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.08)', padding: 14, width: '100%', boxSizing: 'border-box' as const, overflowWrap: 'break-word' as const },
   extCardHead: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontWeight: 700, fontSize: 13, color: COLORS.navy },
   extCardBody: { fontSize: 12, color: COLORS.text, lineHeight: 1.6 },
@@ -1544,13 +1644,17 @@ const CSS = `
   .dt-rightsidebar::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 3px; }
   @media (max-width: 900px) {
     .dt-main { flex-direction: column !important; overflow-y: auto !important; }
-    .dt-sidebar { width: 100% !important; height: auto !important; }
+    .dt-sidebar { position: relative !important; width: 100% !important; height: auto !important; box-shadow: none !important; }
     .dt-mapwrap { flex: 0 0 400px !important; min-height: 400px !important; height: 400px !important; width: 100% !important; }
     .dt-rightsidebar {
+      position: relative !important;
+      right: auto !important;
+      top: auto !important;
       width: 100% !important;
       height: auto !important;
       border-left: none !important;
       border-top: 1px solid ${COLORS.border} !important;
+      box-shadow: none !important;
       flex-direction: row !important;
       flex-wrap: nowrap !important;
       overflow-x: auto !important;
