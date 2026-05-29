@@ -44,7 +44,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyAnIGg6Sltcoc8Tf7Q3ScIdE7-L-dPbW5M';
-const HERE_API_KEY = 'ZHOAp5vxk4uyUuP1JCu1rqeknL1wmrnTywD5zQjAKe4';
 const MAP_CENTER = { lat: 35.3387, lng: 25.1442 };
 const DEFAULT_ZOOM = 15;
 const DEFAULT_TILT = 0;
@@ -980,7 +979,8 @@ export default function DigitalTwin() {
   }, [streetView, isLoaded]);
 
   // -------------------------------------------------------------------------
-  //  HERE MAPS TRAFFIC FLOW — polylines per link, colored by jamFactor
+  //  LIVE TRAFFIC — polylines per segment, colored by jamFactor
+  //  Data source: backend GET /traffic/live (proxies HERE, no key in frontend)
   // -------------------------------------------------------------------------
   useEffect(() => {
     const clearLines = () => {
@@ -992,42 +992,36 @@ export default function DigitalTwin() {
 
     const draw = async () => {
       try {
-        const res = await fetch(
-          `https://data.traffic.hereapi.com/v7/flow?locationReferencing=shape&in=circle:35.3387,25.1442;r=5000&apiKey=${HERE_API_KEY}`,
-        );
-        if (!res.ok) { console.warn('HERE Traffic: HTTP', res.status); return; }
-        const data = await res.json();
+        const res = await fetch(`${BACKEND}/traffic/live`);
+        if (!res.ok) { console.warn('Traffic live: HTTP', res.status); return; }
+        const data: {
+          segments?: { points: { lat: number; lng: number }[]; jamFactor: number }[];
+        } = await res.json();
 
         clearLines();
 
-        for (const result of (data.results ?? [])) {
-          const jf: number = result.currentFlow?.jamFactor ?? 0;
-          const color = jamColor(jf);
-          for (const link of (result.location?.shape?.links ?? [])) {
-            const path: { lat: number; lng: number }[] = (link.points ?? []).map(
-              (pt: { lat: number; lng: number }) => ({ lat: pt.lat, lng: pt.lng }),
-            );
-            if (path.length < 2) continue;
-            hereRoadsRef.current.push(
-              new google.maps.Polyline({
-                path,
-                map: mapObj,
-                strokeColor: color,
-                strokeWeight: 4,
-                strokeOpacity: 0.85,
-                clickable: false,
-                zIndex: 2,
-              }),
-            );
-          }
+        for (const seg of (data.segments ?? [])) {
+          const path = seg.points ?? [];
+          if (path.length < 2) continue;
+          hereRoadsRef.current.push(
+            new google.maps.Polyline({
+              path,
+              map: mapObj,
+              strokeColor: jamColor(seg.jamFactor ?? 0),
+              strokeWeight: 4,
+              strokeOpacity: 0.85,
+              clickable: false,
+              zIndex: 2,
+            }),
+          );
         }
       } catch (e) {
-        console.warn('HERE Traffic API error:', e);
+        console.warn('Traffic live error:', e);
       }
     };
 
     draw();
-    const interval = window.setInterval(draw, 2 * 60 * 1000);
+    const interval = window.setInterval(draw, 120_000);
     return () => {
       window.clearInterval(interval);
       clearLines();
@@ -1116,7 +1110,7 @@ export default function DigitalTwin() {
             <Toggle label={<IL icon={<Waves size={13} color={COLORS.secondary} />} text="Flood Zones" />} checked={showFlood} onChange={setShowFlood} />
             <Toggle label={<IL icon={<AlertTriangle size={13} color={COLORS.accent} />} text="Road Risks" />} checked={showRoadRisks} onChange={setShowRoadRisks} />
             <Toggle label={<IL icon={<Network size={13} />} text="Clustering (reports)" />} checked={clustered} onChange={setClustered} />
-            <Toggle label={<IL icon={<Route size={13} color={COLORS.green} />} text="Live Traffic (HERE)" />} checked={showHereTraffic} onChange={setShowHereTraffic} />
+            <Toggle label={<IL icon={<Route size={13} color={COLORS.green} />} text="Live Traffic (οδικό δίκτυο)" />} checked={showHereTraffic} onChange={setShowHereTraffic} />
           </Accordion>
 
           {/* SIMULATION */}
