@@ -117,10 +117,12 @@ const Announcements: React.FC = () => {
     setSaving(true);
     setError('');
     try {
+      const adminId = localStorage.getItem('user_id') || '';
       const fd = new FormData();
       fd.append('title', form.title);
       fd.append('body', form.body);
       fd.append('category', form.category);
+      if (adminId) fd.append('admin_id', adminId);
       if (imageFile) fd.append('image', imageFile);
 
       await axios.post(`${API_URL}/announcements/`, fd, {
@@ -149,10 +151,12 @@ const Announcements: React.FC = () => {
     setSaving(true);
     setError('');
     try {
+      const adminId = localStorage.getItem('user_id') || '';
       const fd = new FormData();
       if (form.title    !== original.title)    fd.append('title',    form.title);
       if (form.body     !== original.body)     fd.append('body',     form.body);
       if (form.category !== original.category) fd.append('category', form.category);
+      if (adminId)                             fd.append('admin_id', adminId);
       if (imageFile)                           fd.append('image',    imageFile);
 
       const res = await axios.patch(`${API_URL}/announcements/${original.id}`, fd, {
