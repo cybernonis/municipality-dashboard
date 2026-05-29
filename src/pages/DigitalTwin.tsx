@@ -31,6 +31,13 @@ import {
   useJsApiLoader,
 } from '@react-google-maps/api';
 import { MarkerClusterer as GMClusterer } from '@googlemaps/markerclusterer';
+import {
+  Activity, AlertTriangle, BarChart2, Bell, Building2,
+  Car, Clock, ClipboardList, Cloud, Droplets, Eye, FileText,
+  Flame, FlaskConical, Gauge, Layers, Maximize, Minus,
+  Network, Play, Pause, Plus, Printer, Radio, RotateCcw,
+  Route, StopCircle, Waves, Wind, X, Zap,
+} from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 //  CONFIG
@@ -640,7 +647,7 @@ function Accordion({
   badge,
 }: {
   id: string;
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   open: boolean;
   onToggle: (id: string) => void;
@@ -650,7 +657,7 @@ function Accordion({
   return (
     <div style={S.accSection} className="dt-accordion">
       <button style={S.accHeader} onClick={() => onToggle(id)} className="dt-acc-header">
-        <span style={{ fontSize: 15 }}>{icon}</span>
+        <span style={{ display: 'flex', alignItems: 'center' }}>{icon}</span>
         <span style={{ flex: 1, textAlign: 'left' }}>{title}</span>
         {badge}
         <span style={{ transform: open ? 'rotate(90deg)' : 'none', transition: '0.15s', color: COLORS.textMuted }}>›</span>
@@ -1058,44 +1065,62 @@ export default function DigitalTwin() {
       {/* ============================= TOP BAR ============================= */}
       <header style={S.topBar} className="dt-topbar">
         <div style={S.topLeft}>
-          <span style={S.logo}>🏛 Digital Twin — Δήμος Ηρακλείου</span>
+          <span style={S.logo}>
+            <Building2 size={15} style={{ marginRight: 5, verticalAlign: 'middle' }} />
+            Digital Twin — Δήμος Ηρακλείου
+          </span>
           <span style={{ ...S.livePill, opacity: wsConnected ? 1 : 0.5 }}>
             <span style={{ ...S.dot, background: wsConnected ? COLORS.green : COLORS.textMuted }} /> Live
           </span>
         </div>
 
         <div style={S.weatherInline} className="dt-weather">
-          <span>☁️ {wx.temperature != null ? `${Math.round(wx.temperature)}°C` : '—'} Ηράκλειο</span>
-          <span>💧 {wx.humidity ?? '—'}% υγρ.</span>
-          <span>🌬 {wx.wind_kmh != null || wx.wind_speed != null ? `${Math.round(wx.wind_kmh ?? (wx.wind_speed ?? 0) * 3.6)}km/h` : '—'}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Cloud size={13} /> {wx.temperature != null ? `${Math.round(wx.temperature)}°C` : '—'} Ηράκλειο
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Droplets size={13} /> {wx.humidity ?? '—'}% υγρ.
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Wind size={13} /> {wx.wind_kmh != null || wx.wind_speed != null ? `${Math.round(wx.wind_kmh ?? (wx.wind_speed ?? 0) * 3.6)}km/h` : '—'}
+          </span>
         </div>
 
         <div style={S.topStats} className="dt-topstats">
-          <span style={S.stat}>📊 Reports: <b>{totalReports}</b></span>
-          <span style={S.stat}>🚨 Alerts: <b>{activeAlerts}</b></span>
-          <span style={{ ...S.stat, color: highRisk ? COLORS.red : undefined }}>⚠️ Risk: <b>{riskPct}%</b></span>
+          <span style={{ ...S.stat, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <BarChart2 size={13} /> Reports: <b>{totalReports}</b>
+          </span>
+          <span style={{ ...S.stat, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Bell size={13} /> Alerts: <b>{activeAlerts}</b>
+          </span>
+          <span style={{ ...S.stat, display: 'flex', alignItems: 'center', gap: 4, color: highRisk ? COLORS.red : undefined }}>
+            <AlertTriangle size={13} /> Risk: <b>{riskPct}%</b>
+          </span>
         </div>
 
-        <button style={S.pdfBtn} className="dt-noprint" onClick={() => window.print()}>📄 Εξαγωγή PDF</button>
+        <button style={{ ...S.pdfBtn, display: 'flex', alignItems: 'center', gap: 5 }} className="dt-noprint" onClick={() => window.print()}>
+          <Printer size={14} /> Εξαγωγή PDF
+        </button>
       </header>
 
       {/* ===================== MAIN: SIDEBAR + MAP ===================== */}
       <div style={S.main}>
         {/* --------------------------- SIDEBAR --------------------------- */}
         <aside style={S.sidebar} className="dt-sidebar dt-noprint">
-          {/* 📍 LAYERS */}
-          <Accordion id="layers" icon="📍" title="Layers" open={open.layers} onToggle={toggle}>
-            <Toggle label="🗺 Reports (Heatmap)" checked={showReports} onChange={setShowReports} />
-            <Toggle label="📡 IoT Devices" checked={showIot} onChange={setShowIot} />
-            <Toggle label="🔥 Crises" checked={showCrises} onChange={setShowCrises} />
-            <Toggle label="🚗 Traffic Layer" checked={showTraffic} onChange={setShowTraffic} />
-            <Toggle label="🌊 Flood Zones" checked={showFlood} onChange={setShowFlood} />
-            <Toggle label="⚠️ Road Risks" checked={showRoadRisks} onChange={setShowRoadRisks} />
-            <Toggle label="🔗 Clustering (reports)" checked={clustered} onChange={setClustered} />
+          {/* LAYERS */}
+          <Accordion id="layers" icon={<Layers size={15} color={COLORS.secondary} />} title="Layers" open={open.layers} onToggle={toggle}>
+            <Toggle label={<IL icon={<FileText size={13} />} text="Reports (Heatmap)" />} checked={showReports} onChange={setShowReports} />
+            <Toggle label={<IL icon={<Radio size={13} />} text="IoT Devices" />} checked={showIot} onChange={setShowIot} />
+            <Toggle label={<IL icon={<Flame size={13} color={COLORS.red} />} text="Crises" />} checked={showCrises} onChange={setShowCrises} />
+            <Toggle label={<IL icon={<Car size={13} />} text="Traffic Layer" />} checked={showTraffic} onChange={setShowTraffic} />
+            <Toggle label={<IL icon={<Waves size={13} color={COLORS.secondary} />} text="Flood Zones" />} checked={showFlood} onChange={setShowFlood} />
+            <Toggle label={<IL icon={<AlertTriangle size={13} color={COLORS.accent} />} text="Road Risks" />} checked={showRoadRisks} onChange={setShowRoadRisks} />
+            <Toggle label={<IL icon={<Network size={13} />} text="Clustering (reports)" />} checked={clustered} onChange={setClustered} />
+            <Toggle label={<IL icon={<Route size={13} color={COLORS.green} />} text="Live Traffic (HERE)" />} checked={showHereTraffic} onChange={setShowHereTraffic} />
           </Accordion>
 
-          {/* ⚡ FLOOD / SCENARIO SIMULATION */}
-          <Accordion id="sim" icon="⚡" title="Προσομοίωση Κρίσης" open={open.sim} onToggle={toggle}>
+          {/* SIMULATION */}
+          <Accordion id="sim" icon={<FlaskConical size={15} color={COLORS.accent} />} title="Προσομοίωση Κρίσης" open={open.sim} onToggle={toggle}>
             <label style={S.label}>Σενάριο</label>
             <select style={S.input} value={scenario} onChange={(e) => setScenario(e.target.value as ScenarioKey)}>
               {SCENARIOS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
@@ -1123,13 +1148,13 @@ export default function DigitalTwin() {
             </Autocomplete>
             <label style={S.label}>Περιγραφή</label>
             <textarea style={{ ...S.input, height: 60, resize: 'vertical' }} value={simDesc} onChange={(e) => setSimDesc(e.target.value)} />
-            <button style={S.primaryBtn} disabled={simRunning} onClick={runSimulation}>
-              {simRunning ? 'Εκτέλεση…' : '▶ Εκτέλεση Προσομοίωσης'}
+            <button style={{ ...S.primaryBtn, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} disabled={simRunning} onClick={runSimulation}>
+              <Play size={14} /> {simRunning ? 'Εκτέλεση…' : 'Εκτέλεση Προσομοίωσης'}
             </button>
           </Accordion>
 
-          {/* 📊 RESULTS */}
-          <Accordion id="results" icon="📊" title="Αποτελέσματα" open={open.results} onToggle={toggle}>
+          {/* RESULTS */}
+          <Accordion id="results" icon={<BarChart2 size={15} color={COLORS.secondary} />} title="Αποτελέσματα" open={open.results} onToggle={toggle}>
             {!simResult ? <p style={S.muted}>Δεν υπάρχουν αποτελέσματα ακόμη.</p> : (
               <>
                 <span style={{ ...S.badge, background: simResult.severity === 'high' ? COLORS.red : simResult.severity === 'low' ? COLORS.green : COLORS.accent }}>
@@ -1142,10 +1167,14 @@ export default function DigitalTwin() {
             )}
           </Accordion>
 
-          {/* 🚨 ALERTS */}
-          <Accordion id="alerts" icon="🚨" title="Ειδοποιήσεις" open={open.alerts} onToggle={toggle}
+          {/* ALERTS */}
+          <Accordion id="alerts" icon={<AlertTriangle size={15} color={COLORS.red} />} title="Ειδοποιήσεις" open={open.alerts} onToggle={toggle}
             badge={alerts.length ? <span style={S.countBadge}>{alerts.length}</span> : undefined}>
-            {highRisk && <div style={S.riskBanner}>⚠️ ΥΨΗΛΟΣ ΚΙΝΔΥΝΟΣ — {riskPct}%</div>}
+            {highRisk && (
+              <div style={{ ...S.riskBanner, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <AlertTriangle size={13} /> ΥΨΗΛΟΣ ΚΙΝΔΥΝΟΣ — {riskPct}%
+              </div>
+            )}
             {alerts.length === 0 ? <p style={S.muted}>Καμία ενεργή ειδοποίηση.</p> :
               alerts.map((a) => (
                 <div key={a.id} style={{ ...S.alertRow, borderLeftColor: a.level === 'critical' ? COLORS.red : a.level === 'warning' ? COLORS.accent : COLORS.secondary }}>
@@ -1155,36 +1184,19 @@ export default function DigitalTwin() {
               ))}
           </Accordion>
 
-          {/* 🌤 WEATHER + EXTERNAL DATA */}
-          <Accordion id="external" icon="🌐" title="Εξωτερικά Δεδομένα" open={open.external} onToggle={toggle}>
-            <Card title="🌤 Καιρός">
-              {wx.temperature != null ? `${Math.round(wx.temperature)}°C · ${wx.description ?? ''} · υγρ. ${wx.humidity}% · άνεμος ${Math.round(wx.wind_kmh ?? (wx.wind_speed ?? 0) * 3.6)}km/h` : 'N/A'}
-            </Card>
-            <Card title="💨 Ποιότητα Αέρα">
-              {external.air_quality ? `AQI ${external.air_quality.aqi} (${external.air_quality.status ?? '—'}) · PM2.5 ${external.air_quality.pm25 ?? '—'}` : 'N/A'}
-            </Card>
-            <Card title="🚧 Κίνηση">
-              {incidents.length ? incidents.map((i, k) => <div key={k}>• {i.type ?? i.description ?? '—'}{i.location ? ` — ${i.location}` : ''}</div>) : 'Χωρίς συμβάντα'}
-            </Card>
-            <Card title="🌍 Σεισμοί">
-              {quakes.length ? quakes.slice(0, 4).map((q, k) => <div key={k}>• {num(q.magnitude) ?? num(q.mag) ?? '—'}R — {q.place ?? q.location ?? '—'}</div>) : 'Κανένας'}
-            </Card>
-            <Card title="🔥 Πυρκαγιές / Κίνδυνοι">
-              {hazardsArr.length ? hazardsArr.map((h, k) => <div key={k}>• {h.place ?? h.location ?? h.title ?? 'Πυρκαγιά'}</div>) : 'Καμία'}
-            </Card>
-          </Accordion>
-
-          {/* ⏱ TIME-LAPSE */}
-          <Accordion id="timelapse" icon="⏱" title="Time-lapse (7 ημέρες)" open={open.timelapse} onToggle={toggle}>
+          {/* TIME-LAPSE */}
+          <Accordion id="timelapse" icon={<Clock size={15} color={COLORS.secondary} />} title="Time-lapse (7 ημέρες)" open={open.timelapse} onToggle={toggle}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button style={S.smallBtn} onClick={() => setTlPlaying((p) => !p)}>{tlPlaying ? '⏸ Pause' : '▶ Play'}</button>
+              <button style={{ ...S.smallBtn, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => setTlPlaying((p) => !p)}>
+                {tlPlaying ? <><Pause size={12} /> Pause</> : <><Play size={12} /> Play</>}
+              </button>
               <span style={S.muted}>Ημέρα {tlDay + 1}/7</span>
             </div>
             <input type="range" min={0} max={6} value={tlDay} onChange={(e) => setTlDay(Number(e.target.value))} style={{ width: '100%' }} />
           </Accordion>
 
-          {/* 📋 LIVE LOG */}
-          <Accordion id="log" icon="📋" title="Live Updates" open={open.log} onToggle={toggle}>
+          {/* LIVE LOG */}
+          <Accordion id="log" icon={<ClipboardList size={15} color={COLORS.secondary} />} title="Live Updates" open={open.log} onToggle={toggle}>
             {liveFeed.length === 0 ? <p style={S.muted}>Αναμονή ενημερώσεων…</p> :
               liveFeed.map((f, i) => (
                 <div key={i} style={S.feedRow}><small style={S.ts}>{new Date(f.ts).toLocaleTimeString('el-GR')}</small> {f.text}</div>
@@ -1267,11 +1279,17 @@ export default function DigitalTwin() {
               <InfoWindow position={infoPos} onCloseClick={() => setInfoPos(null)}>
                 <div style={{ fontSize: 13, minWidth: 180, color: COLORS.text }}>
                   <strong>Ανάλυση σημείου</strong>
-                  <div>📋 Reports &lt;200m: <b>{infoData.nearby}</b></div>
-                  <div>⚠️ Κίνδυνος: <b>{infoData.risk}</b></div>
-                  <div>🚗 Πυκνότητα: <b>{infoData.density}%</b></div>
-                  <button style={{ ...S.smallBtn, marginTop: 6 }} onClick={() => { setStreetView(infoPos); setInfoPos(null); }}>
-                    👁 Street View
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                    <FileText size={13} /> Reports &lt;200m: <b>{infoData.nearby}</b>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <AlertTriangle size={13} color={COLORS.accent} /> Κίνδυνος: <b>{infoData.risk}</b>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Car size={13} /> Πυκνότητα: <b>{infoData.density}%</b>
+                  </div>
+                  <button style={{ ...S.smallBtn, marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => { setStreetView(infoPos); setInfoPos(null); }}>
+                    <Eye size={12} /> Street View
                   </button>
                 </div>
               </InfoWindow>
@@ -1280,24 +1298,60 @@ export default function DigitalTwin() {
 
           {/* Floating map controls */}
           <div style={S.floatControls} className="dt-noprint">
-            <button style={S.fctrl} onClick={() => mapRef.current?.setZoom((mapRef.current.getZoom() ?? DEFAULT_ZOOM) + 1)}>＋</button>
-            <button style={S.fctrl} onClick={() => mapRef.current?.setZoom((mapRef.current.getZoom() ?? DEFAULT_ZOOM) - 1)}>－</button>
+            <button style={S.fctrl} title="Zoom in" onClick={() => mapRef.current?.setZoom((mapRef.current.getZoom() ?? DEFAULT_ZOOM) + 1)}><Plus size={16} /></button>
+            <button style={S.fctrl} title="Zoom out" onClick={() => mapRef.current?.setZoom((mapRef.current.getZoom() ?? DEFAULT_ZOOM) - 1)}><Minus size={16} /></button>
             <select style={S.fselect} value={mapType} onChange={(e) => setMapType(e.target.value)}>
               <option value="satellite">Satellite</option>
               <option value="terrain">Terrain</option>
               <option value="roadmap">Road</option>
             </select>
-            <button style={S.fctrl} onClick={() => {
+            <button style={S.fctrl} title="Fullscreen" onClick={() => {
               const el = mapRef.current?.getDiv().parentElement;
               if (!document.fullscreenElement) el?.requestFullscreen?.(); else document.exitFullscreen?.();
-            }}>⛶</button>
+            }}><Maximize size={16} /></button>
+          </div>
+
+          {/* External data permanent right column */}
+          <div className="dt-extcol" style={S.extCol}>
+            <div style={S.extCard}>
+              <div style={S.extCardHead}><Cloud size={16} color={COLORS.secondary} /><span>Καιρός</span></div>
+              <div style={S.extCardBody}>
+                {wx.temperature != null
+                  ? `${Math.round(wx.temperature)}°C · ${wx.description ?? ''} · υγρ. ${wx.humidity}% · άνεμος ${Math.round(wx.wind_kmh ?? (wx.wind_speed ?? 0) * 3.6)}km/h`
+                  : 'N/A'}
+              </div>
+            </div>
+            <div style={S.extCard}>
+              <div style={S.extCardHead}><Wind size={16} color={COLORS.secondary} /><span>Ποιότητα Αέρα</span></div>
+              <div style={S.extCardBody}>
+                {external.air_quality ? `AQI ${external.air_quality.aqi} (${external.air_quality.status ?? '—'}) · PM2.5 ${external.air_quality.pm25 ?? '—'}` : 'N/A'}
+              </div>
+            </div>
+            <div style={S.extCard}>
+              <div style={S.extCardHead}><Car size={16} color={COLORS.secondary} /><span>Κίνηση</span></div>
+              <div style={S.extCardBody}>
+                {incidents.length ? incidents.map((inc, k) => <div key={k}>• {inc.type ?? inc.description ?? '—'}{inc.location ? ` — ${inc.location}` : ''}</div>) : 'Χωρίς συμβάντα'}
+              </div>
+            </div>
+            <div style={S.extCard}>
+              <div style={S.extCardHead}><Activity size={16} color={COLORS.accent} /><span>Σεισμοί</span></div>
+              <div style={S.extCardBody}>
+                {quakes.length ? quakes.slice(0, 4).map((q, k) => <div key={k}>• {num(q.magnitude) ?? num(q.mag) ?? '—'}R — {q.place ?? q.location ?? '—'}</div>) : 'Κανένας'}
+              </div>
+            </div>
+            <div style={S.extCard}>
+              <div style={S.extCardHead}><Flame size={16} color={COLORS.red} /><span>Πυρκαγιές / Κίνδυνοι</span></div>
+              <div style={S.extCardBody}>
+                {hazardsArr.length ? hazardsArr.map((h, k) => <div key={k}>• {h.place ?? h.location ?? h.title ?? 'Πυρκαγιά'}</div>) : 'Καμία'}
+              </div>
+            </div>
           </div>
 
           {/* Street View slide-in panel */}
           <div style={{ ...S.streetPanel, transform: streetView ? 'translateX(0)' : 'translateX(110%)' }} className="dt-noprint">
             <div style={S.streetHeader}>
               <span>Street View</span>
-              <button style={S.closeBtn} onClick={() => setStreetView(null)}>✕</button>
+              <button style={S.closeBtn} onClick={() => setStreetView(null)}><X size={18} /></button>
             </div>
             <div ref={streetDivRef} style={{ width: '100%', height: 'calc(100% - 40px)' }} />
           </div>
@@ -1306,10 +1360,16 @@ export default function DigitalTwin() {
 
       {/* ============================ BOTTOM BAR ============================ */}
       <footer style={S.bottomBar} className="dt-bottombar dt-noprint">
-        <span style={{ fontSize: 18 }}>🚗</span>
-        <button style={S.vbtn} onClick={() => setVehRunning(true)}>▶ Start</button>
-        <button style={S.vbtn} onClick={() => setVehRunning(false)}>⏹ Stop</button>
-        <button style={S.vbtn} onClick={() => { overlayRef.current?.reset(); setVehRunning(false); }}>↺ Reset</button>
+        <Car size={18} color="#cfe3f1" />
+        <button style={{ ...S.vbtn, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => setVehRunning(true)}>
+          <Play size={13} /> Start
+        </button>
+        <button style={{ ...S.vbtn, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => setVehRunning(false)}>
+          <StopCircle size={13} /> Stop
+        </button>
+        <button style={{ ...S.vbtn, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => { overlayRef.current?.reset(); setVehRunning(false); }}>
+          <RotateCcw size={13} /> Reset
+        </button>
 
         <div style={S.vsliderWrap}>
           <span style={S.vlabel}>Speed</span>
@@ -1326,9 +1386,9 @@ export default function DigitalTwin() {
         </div>
 
         <div style={S.vstats}>
-          <span>🚗 <b>{vehStats.count.toLocaleString('el-GR')}</b></span>
-          <span>⚡ <b>{vehStats.avgSpeed}</b> km/h</span>
-          <span>🚦 <b>{vehStats.congestion}%</b></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Car size={13} /> <b>{vehStats.count.toLocaleString('el-GR')}</b></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Zap size={13} /> <b>{vehStats.avgSpeed}</b> km/h</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Gauge size={13} /> <b>{vehStats.congestion}%</b></span>
         </div>
       </footer>
     </div>
@@ -1338,13 +1398,16 @@ export default function DigitalTwin() {
 // ---------------------------------------------------------------------------
 //  small sub-components
 // ---------------------------------------------------------------------------
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ label, checked, onChange }: { label: React.ReactNode; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label style={S.toggleRow}>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span>{label}</span>
     </label>
   );
+}
+function IL({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>{icon}{text}</span>;
 }
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -1424,7 +1487,7 @@ const S: Record<string, React.CSSProperties> = {
   pdfBtn: { background: COLORS.accent, color: COLORS.navyDark, border: 'none', padding: '7px 12px', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: 13 },
 
   // main
-  main: { display: 'flex', flex: 1, minHeight: 0 },
+  main: { display: 'flex', flex: 1, minHeight: 0, position: 'relative' },
   sidebar: { width: 300, flexShrink: 0, background: COLORS.panelAlt, borderRight: `1px solid ${COLORS.border}`, overflowY: 'auto', padding: 10 },
 
   // accordion
@@ -1454,7 +1517,11 @@ const S: Record<string, React.CSSProperties> = {
 
   // map
   mapWrap: { position: 'relative', flex: 1, minWidth: 0 },
-  floatControls: { position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 5 },
+  floatControls: { position: 'absolute', top: 12, left: 12, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 5 },
+  extCol: { position: 'absolute', top: 16, right: 16, width: 300, maxHeight: 'calc(100% - 32px)', overflowY: 'auto' as const, zIndex: 4, display: 'flex', flexDirection: 'column' as const, gap: 12, pointerEvents: 'auto' as const },
+  extCard: { background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.12)', padding: 14 },
+  extCardHead: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontWeight: 700, fontSize: 13, color: COLORS.navy },
+  extCardBody: { fontSize: 12, color: COLORS.text, lineHeight: 1.6 },
   fctrl: { width: 36, height: 36, border: 'none', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700, color: COLORS.navy, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
   fselect: { border: 'none', borderRadius: 6, padding: '6px', background: '#fff', cursor: 'pointer', fontSize: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
 
@@ -1478,6 +1545,30 @@ const CSS = `
   .dt-sidebar::-webkit-scrollbar { width: 8px; }
   .dt-sidebar::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 4px; }
   .dt-acc-header:hover { background: ${COLORS.panelAlt}; }
+  .dt-extcol::-webkit-scrollbar { width: 5px; }
+  .dt-extcol::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 3px; }
+  @media (max-width: 767px) {
+    .dt-extcol {
+      top: auto !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      max-height: 45% !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      padding: 8px !important;
+      gap: 8px !important;
+      background: rgba(244,246,248,0.97) !important;
+      border-top: 1px solid ${COLORS.border} !important;
+    }
+    .dt-extcol > * {
+      flex: 0 0 220px !important;
+      min-width: 220px !important;
+    }
+  }
   @media print {
     .dt-noprint { display: none !important; }
     .dt-root { height: auto !important; overflow: visible !important; }
