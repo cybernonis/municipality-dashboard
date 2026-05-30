@@ -1,5 +1,7 @@
 # Getting Started with Create React App
 
+![CI](https://github.com/cybernonis/municipality-dashboard/actions/workflows/ci.yml/badge.svg)
+
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
 ## Available Scripts
