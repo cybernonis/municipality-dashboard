@@ -28,6 +28,7 @@ import Leaderboard from './pages/Leaderboard';
 import GamificationManagement from './pages/GamificationManagement';
 import Announcements from './pages/Announcements';
 import Appointments from './pages/Appointments';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 const isLoggedIn = () => !!localStorage.getItem('token');
@@ -75,6 +76,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/*" element={
           isLoggedIn() ? (
             <AppLayout>

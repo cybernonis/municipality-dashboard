@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, FileText, Map, BarChart2,
@@ -364,6 +364,18 @@ const Sidebar: React.FC = () => {
           <LogOut className="w-4 h-4 flex-shrink-0" />
           {!collapsed && <span>Αποσύνδεση</span>}
         </button>
+
+        {/* Privacy link */}
+        {!collapsed && (
+          <div className="pt-1 border-t border-white/10 mt-1">
+            <Link
+              to="/privacy"
+              className="block text-center text-xs text-white/30 hover:text-white/60 transition-colors py-1"
+            >
+              Πολιτική Απορρήτου
+            </Link>
+          </div>
+        )}
       </div>
     </aside>
   );
