@@ -1,40 +1,68 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import {
   Megaphone, Plus, Trash2, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, RefreshCw, Tag, Calendar, Edit3, ImageIcon,
+  Star, AlertCircle, Info, Clipboard, Mail, X,
 } from 'lucide-react';
 import InfoButton from '../components/InfoButton';
+import { sanitize } from '../utils/sanitize';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 const PAGE_SIZE = 10;
 
 const CATEGORIES: Record<string, { label: string; cls: string }> = {
-  general:   { label: 'Γενικές',    cls: 'bg-blue-100 text-blue-700' },
-  emergency: { label: 'Έκτακτα',    cls: 'bg-red-100 text-red-700' },
-  technical: { label: 'Τεχνικά',    cls: 'bg-amber-100 text-amber-700' },
-  events:    { label: 'Εκδηλώσεις', cls: 'bg-emerald-100 text-emerald-700' },
+  general:     { label: 'Γενική',       cls: 'bg-blue-100 text-blue-700' },
+  events:      { label: 'Εκδηλώσεις',  cls: 'bg-emerald-100 text-emerald-700' },
+  works:       { label: 'Έργα',         cls: 'bg-amber-100 text-amber-700' },
+  emergency:   { label: 'Έκτακτη',      cls: 'bg-red-100 text-red-700' },
+  transport:   { label: 'Συγκοινωνία', cls: 'bg-purple-100 text-purple-700' },
+  environment: { label: 'Περιβάλλον',  cls: 'bg-teal-100 text-teal-700' },
+  technical:   { label: 'Τεχνικά',     cls: 'bg-orange-100 text-orange-700' },
 };
 
 interface Announcement {
   id: string;
   title: string;
-  body: string;
+  content?: string;
+  body?: string;
   category: string;
   image_url?: string;
+  is_important: boolean;
+  is_urgent: boolean;
+  priority?: number;
   created_at: string;
+  expires_at?: string | null;
 }
 
 interface FormState {
   title: string;
-  body: string;
+  content: string;
   category: string;
+  isImportant: boolean;
+  isUrgent: boolean;
+  expiresAt: string;
 }
 
-const EMPTY_FORM: FormState = { title: '', body: '', category: 'general' };
+const EMPTY_FORM: FormState = {
+  title: '',
+  content: '',
+  category: 'general',
+  isImportant: false,
+  isUrgent: false,
+  expiresAt: '',
+};
 
 const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E86AB]';
 const labelCls = 'block text-sm font-medium text-gray-700 mb-1';
+
+const getContent = (a: Announcement) => a.content ?? a.body ?? '';
+
+const sortAnnouncements = (arr: Announcement[]) =>
+  [...arr].sort((a, b) => {
+    if (a.is_urgent    !== b.is_urgent)    return b.is_urgent    ? 1 : -1;
+    if (a.is_important !== b.is_important) return b.is_important ? 1 : -1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 
 const Announcements: React.FC = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -43,8 +71,11 @@ const Announcements: React.FC = () => {
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState('');
   const [success, setSuccess]   = useState('');
+  const [filter, setFilter]     = useState<'all' | 'important' | 'urgent'>('all');
 
-  // modal mode: null = closed, 'create' = new, Announcement = edit
+  const [selected, setSelected] = useState<Announcement | null>(null);
+  const [copied, setCopied]     = useState(false);
+
   const [modalMode, setModalMode] = useState<null | 'create' | Announcement>(null);
   const [form, setForm]           = useState<FormState>(EMPTY_FORM);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -54,10 +85,10 @@ const Announcements: React.FC = () => {
   const fetchAnnouncements = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/announcements/`);
+      const res = await api.get('/announcements/');
       const payload = res.data?.data ?? res.data;
       const items = Array.isArray(payload) ? payload : Object.values(payload || {});
-      setAnnouncements(items as Announcement[]);
+      setAnnouncements(sortAnnouncements(items as Announcement[]));
     } catch {
       setError('Σφάλμα φόρτωσης ανακοινώσεων');
     } finally {
@@ -67,8 +98,14 @@ const Announcements: React.FC = () => {
 
   useEffect(() => { fetchAnnouncements(); }, [fetchAnnouncements]);
 
-  const totalPages = Math.max(1, Math.ceil(announcements.length / PAGE_SIZE));
-  const paged      = announcements.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const filtered = announcements.filter(a => {
+    if (filter === 'important') return a.is_important;
+    if (filter === 'urgent')    return a.is_urgent;
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged      = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // ── open modal ────────────────────────────────────────────────────────────
   const openCreate = () => {
@@ -79,8 +116,16 @@ const Announcements: React.FC = () => {
     setModalMode('create');
   };
 
-  const openEdit = (a: Announcement) => {
-    setForm({ title: a.title, body: a.body, category: a.category });
+  const openEdit = (a: Announcement, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setForm({
+      title:       a.title,
+      content:     getContent(a),
+      category:    a.category,
+      isImportant: a.is_important ?? false,
+      isUrgent:    a.is_urgent    ?? false,
+      expiresAt:   a.expires_at ? a.expires_at.replace('Z', '').slice(0, 16) : '',
+    });
     setImageFile(null);
     setImagePreview(a.image_url || '');
     setError('');
@@ -110,7 +155,7 @@ const Announcements: React.FC = () => {
 
   // ── create ────────────────────────────────────────────────────────────────
   const handleCreate = async () => {
-    if (!form.title.trim() || !form.body.trim()) {
+    if (!form.title.trim() || !form.content.trim()) {
       setError('Συμπληρώστε τίτλο και περιεχόμενο');
       return;
     }
@@ -119,15 +164,17 @@ const Announcements: React.FC = () => {
     try {
       const adminId = localStorage.getItem('user_id') || '';
       const fd = new FormData();
-      fd.append('title', form.title);
-      fd.append('body', form.body);
-      fd.append('category', form.category);
-      if (adminId) fd.append('admin_id', adminId);
-      if (imageFile) fd.append('image', imageFile);
+      fd.append('title',        form.title);
+      fd.append('content',      form.content);
+      fd.append('body',         form.content);
+      fd.append('category',     form.category);
+      fd.append('is_important', String(form.isImportant));
+      fd.append('is_urgent',    String(form.isUrgent));
+      if (form.expiresAt) fd.append('expires_at', form.expiresAt);
+      if (adminId)        fd.append('admin_id',   adminId);
+      if (imageFile)      fd.append('image',      imageFile);
 
-      await axios.post(`${API_URL}/announcements/`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      await api.post('/announcements/', fd);
       setSuccess('Η ανακοίνωση δημιουργήθηκε!');
       closeModal();
       fetchAnnouncements();
@@ -143,8 +190,7 @@ const Announcements: React.FC = () => {
   const handleUpdate = async () => {
     if (modalMode === null || modalMode === 'create') return;
     const original = modalMode as Announcement;
-
-    if (!form.title.trim() || !form.body.trim()) {
+    if (!form.title.trim() || !form.content.trim()) {
       setError('Συμπληρώστε τίτλο και περιεχόμενο');
       return;
     }
@@ -153,17 +199,19 @@ const Announcements: React.FC = () => {
     try {
       const adminId = localStorage.getItem('user_id') || '';
       const fd = new FormData();
-      if (form.title    !== original.title)    fd.append('title',    form.title);
-      if (form.body     !== original.body)     fd.append('body',     form.body);
-      if (form.category !== original.category) fd.append('category', form.category);
-      if (adminId)                             fd.append('admin_id', adminId);
-      if (imageFile)                           fd.append('image',    imageFile);
+      fd.append('title',        form.title);
+      fd.append('content',      form.content);
+      fd.append('body',         form.content);
+      fd.append('category',     form.category);
+      fd.append('is_important', String(form.isImportant));
+      fd.append('is_urgent',    String(form.isUrgent));
+      if (form.expiresAt)  fd.append('expires_at', form.expiresAt);
+      if (adminId)         fd.append('admin_id',   adminId);
+      if (imageFile)       fd.append('image',      imageFile);
 
-      const res = await axios.patch(`${API_URL}/announcements/${original.id}`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.patch(`/announcements/${original.id}`, fd);
       const updated: Announcement = res.data?.data ?? res.data;
-      setAnnouncements(prev => prev.map(a => a.id === original.id ? { ...a, ...updated } : a));
+      setAnnouncements(prev => sortAnnouncements(prev.map(a => a.id === original.id ? { ...a, ...updated } : a)));
       setSuccess('Η ανακοίνωση ενημερώθηκε!');
       closeModal();
       setTimeout(() => setSuccess(''), 3000);
@@ -175,10 +223,11 @@ const Announcements: React.FC = () => {
   };
 
   // ── delete ────────────────────────────────────────────────────────────────
-  const handleDelete = async (id: string, title: string) => {
+  const handleDelete = async (id: string, title: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!window.confirm(`Διαγραφή ανακοίνωσης "${title}";`)) return;
     try {
-      await axios.delete(`${API_URL}/announcements/${id}`);
+      await api.delete(`/announcements/${id}`);
       setAnnouncements(prev => prev.filter(a => a.id !== id));
       setSuccess('Η ανακοίνωση διαγράφηκε!');
       setTimeout(() => setSuccess(''), 3000);
@@ -226,21 +275,44 @@ const Announcements: React.FC = () => {
         </div>
       )}
 
-      {/* Category stats */}
+      {/* Category stats — top 4 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {Object.entries(CATEGORIES).map(([key, { label, cls }]) => (
-          <div key={key} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${cls}`}>
-              <Tag className="w-4 h-4" />
+        {(['general', 'events', 'works', 'emergency'] as const).map(key => {
+          const { label, cls } = CATEGORIES[key];
+          return (
+            <div key={key} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${cls}`}>
+                <Tag className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-[#1E3A5F]">
+                  {announcements.filter(a => a.category === key).length}
+                </p>
+                <p className="text-xs text-gray-500">{label}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-[#1E3A5F]">
-                {announcements.filter(a => a.category === key).length}
-              </p>
-              <p className="text-xs text-gray-500">{label}</p>
-            </div>
-          </div>
+          );
+        })}
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {(['all', 'important', 'urgent'] as const).map(f => (
+          <button
+            key={f}
+            onClick={() => { setFilter(f); setPage(1); }}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+              filter === f
+                ? 'bg-[#1E3A5F] text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {f === 'all' ? 'Όλες' : f === 'important' ? <><Star className="w-3.5 h-3.5 inline mr-1 text-yellow-500" />Σημαντικές</> : <><AlertCircle className="w-3.5 h-3.5 inline mr-1 text-red-500" />Επείγουσες</>}
+          </button>
         ))}
+        {filter !== 'all' && (
+          <span className="ml-auto text-xs text-gray-400 self-center">{filtered.length} αποτελέσματα</span>
+        )}
       </div>
 
       {/* Table */}
@@ -248,7 +320,7 @@ const Announcements: React.FC = () => {
         <div className="flex justify-center items-center h-64">
           <Megaphone className="w-10 h-10 text-[#2E86AB] animate-pulse" />
         </div>
-      ) : announcements.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <Megaphone className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p>Δεν υπάρχουν ανακοινώσεις ακόμα</p>
@@ -262,6 +334,7 @@ const Announcements: React.FC = () => {
                   <th className="px-4 py-3 text-left font-semibold w-14">Εικόνα</th>
                   <th className="px-4 py-3 text-left font-semibold">Τίτλος</th>
                   <th className="px-4 py-3 text-left font-semibold">Κατηγορία</th>
+                  <th className="px-4 py-3 text-left font-semibold">Τύπος</th>
                   <th className="px-4 py-3 text-left font-semibold">Περιεχόμενο</th>
                   <th className="px-4 py-3 text-left font-semibold">Ημερομηνία</th>
                   <th className="px-4 py-3 text-center font-semibold w-32">Ενέργειες</th>
@@ -271,8 +344,11 @@ const Announcements: React.FC = () => {
                 {paged.map(a => {
                   const cat = CATEGORIES[a.category] || { label: a.category, cls: 'bg-gray-100 text-gray-600' };
                   return (
-                    <tr key={a.id} className="hover:bg-blue-50 transition-colors">
-                      {/* Thumbnail */}
+                    <tr
+                      key={a.id}
+                      onClick={() => setSelected(a)}
+                      className="hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
                       <td className="px-4 py-3">
                         {a.image_url ? (
                           <img
@@ -295,8 +371,23 @@ const Announcements: React.FC = () => {
                           {cat.label}
                         </span>
                       </td>
+                      <td className="px-4 py-3">
+                        {a.is_urgent ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                            <AlertCircle className="w-3 h-3" /> Επείγον
+                          </span>
+                        ) : a.is_important ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                            <Star className="w-3 h-3" /> Σημαντικό
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                            <Info className="w-3 h-3" /> Γενικό
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 max-w-sm">
-                        <p className="text-gray-500 text-xs truncate">{a.body}</p>
+                        <p className="text-gray-500 text-xs truncate">{sanitize(getContent(a))}</p>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-1 text-gray-400 text-xs">
@@ -307,14 +398,14 @@ const Announcements: React.FC = () => {
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
-                            onClick={() => openEdit(a)}
+                            onClick={e => openEdit(a, e)}
                             className="inline-flex items-center gap-1 text-xs text-[#2E86AB] hover:text-[#1E3A5F] hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                             Επεξεργασία
                           </button>
                           <button
-                            onClick={() => handleDelete(a.id, a.title)}
+                            onClick={e => handleDelete(a.id, a.title, e)}
                             className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -332,9 +423,9 @@ const Announcements: React.FC = () => {
           {/* Pagination */}
           <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
             <span className="text-xs text-gray-400">
-              {announcements.length === 0
+              {filtered.length === 0
                 ? '0 αποτελέσματα'
-                : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, announcements.length)} από ${announcements.length}`}
+                : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filtered.length)} από ${filtered.length}`}
             </span>
             <div className="flex items-center gap-1">
               <button
@@ -362,6 +453,125 @@ const Announcements: React.FC = () => {
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {selected && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="bg-white rounded-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Badges + close */}
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex gap-2 flex-wrap">
+                {selected.is_urgent && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">
+                    <AlertCircle className="w-3 h-3" /> Επείγον
+                  </span>
+                )}
+                {selected.is_important && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full font-medium">
+                    <Star className="w-3 h-3" /> Σημαντικό
+                  </span>
+                )}
+                {!selected.is_urgent && !selected.is_important && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-full font-medium">
+                    <Info className="w-3 h-3" /> Γενικό
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setSelected(null)}
+                className="text-gray-400 hover:text-gray-600 ml-4 flex-shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <h2 className="text-xl font-bold text-[#1E3A5F] mb-2">{selected.title}</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              {new Date(selected.created_at).toLocaleDateString('el-GR', {
+                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+              })}
+            </p>
+
+            {selected.image_url && (
+              <img
+                src={selected.image_url}
+                alt=""
+                className="w-full max-h-48 object-cover rounded-lg mb-4 border border-gray-200"
+              />
+            )}
+
+            <p className="text-gray-700 leading-relaxed mb-6 whitespace-pre-wrap">
+              {sanitize(getContent(selected))}
+            </p>
+
+            {/* Share */}
+            <div className="border-t pt-4">
+              <p className="text-sm font-medium text-gray-600 mb-3">Κοινοποίηση:</p>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    const url = encodeURIComponent(window.location.href);
+                    const text = encodeURIComponent(selected.title);
+                    window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${text}`, '_blank');
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                >
+                  Facebook
+                </button>
+                <button
+                  onClick={() => {
+                    const text = encodeURIComponent(`${selected.title} - Δήμος Ηρακλείου`);
+                    const url = encodeURIComponent(window.location.href);
+                    window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank');
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
+                >
+                  Twitter/X
+                </button>
+                <button
+                  onClick={() => {
+                    const url = encodeURIComponent(window.location.href);
+                    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank');
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-blue-700 text-white rounded-lg text-sm hover:bg-blue-800 transition-colors"
+                >
+                  LinkedIn
+                </button>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `${selected.title}\n\n${getContent(selected)}\n\nΔήμος Ηρακλείου`
+                    );
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                >
+                  {copied ? <><CheckCircle className="w-4 h-4" />Αντιγράφηκε!</> : <><Clipboard className="w-4 h-4" />Αντιγραφή</>}
+                </button>
+                <button
+                  onClick={() => {
+                    const subject = encodeURIComponent(selected.title);
+                    const body = encodeURIComponent(
+                      `${selected.title}\n\n${getContent(selected)}\n\nΔήμος Ηρακλείου`
+                    );
+                    window.open(`mailto:?subject=${subject}&body=${body}`);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                >
+                  <Mail className="w-4 h-4" />Email
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -399,6 +609,7 @@ const Announcements: React.FC = () => {
                     placeholder="π.χ. Διακοπή υδροδότησης στις 15 Ιανουαρίου"
                   />
                 </div>
+
                 <div>
                   <label className={labelCls}>Κατηγορία</label>
                   <select
@@ -406,19 +617,59 @@ const Announcements: React.FC = () => {
                     onChange={e => setForm({ ...form, category: e.target.value })}
                     className={inputCls}
                   >
-                    {Object.entries(CATEGORIES).map(([v, { label }]) => (
-                      <option key={v} value={v}>{label}</option>
-                    ))}
+                    <option value="general">Γενική</option>
+                    <option value="events">Εκδηλώσεις</option>
+                    <option value="works">Έργα</option>
+                    <option value="emergency">Έκτακτη Ανάγκη</option>
+                    <option value="transport">Συγκοινωνία</option>
+                    <option value="environment">Περιβάλλον</option>
                   </select>
                 </div>
+
                 <div>
                   <label className={labelCls}>Περιεχόμενο *</label>
                   <textarea
-                    value={form.body}
-                    onChange={e => setForm({ ...form, body: e.target.value })}
+                    value={form.content}
+                    onChange={e => setForm({ ...form, content: e.target.value })}
                     className={`${inputCls} resize-none`}
                     rows={4}
                     placeholder="Γράψτε το περιεχόμενο της ανακοίνωσης..."
+                  />
+                </div>
+
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.isImportant}
+                      onChange={e => setForm({ ...form, isImportant: e.target.checked })}
+                      className="w-4 h-4 accent-[#F6AE2D]"
+                    />
+                    <span className="text-sm font-medium flex items-center gap-1"><Star className="w-3.5 h-3.5 text-yellow-500" />Σημαντική Ενημέρωση</span>
+                    <span className="text-xs text-gray-500">(εμφανίζεται πρώτη στο mobile app)</span>
+                  </label>
+                </div>
+
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.isUrgent}
+                      onChange={e => setForm({ ...form, isUrgent: e.target.checked })}
+                      className="w-4 h-4 accent-red-500"
+                    />
+                    <span className="text-sm font-medium text-red-600 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" />Επείγον</span>
+                    <span className="text-xs text-gray-500">(push notification αμέσως)</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className={labelCls}>Λήξη (προαιρετικό)</label>
+                  <input
+                    type="datetime-local"
+                    value={form.expiresAt}
+                    onChange={e => setForm({ ...form, expiresAt: e.target.value })}
+                    className={inputCls}
                   />
                 </div>
 

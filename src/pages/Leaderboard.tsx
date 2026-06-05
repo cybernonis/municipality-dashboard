@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Crown, Star, Zap, Users, TrendingUp, Award, Medal, Hash } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import InfoButton from '../components/InfoButton';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
@@ -16,10 +17,10 @@ interface LeaderboardEntry {
   reports_count?: number;
 }
 
-const RANK_CONFIG: Record<number, { emoji: string; bg: string; text: string; border: string }> = {
-  1: { emoji: '🥇', bg: 'bg-yellow-50',  text: 'text-yellow-700',  border: 'border-yellow-300' },
-  2: { emoji: '🥈', bg: 'bg-gray-50',    text: 'text-gray-600',    border: 'border-gray-300' },
-  3: { emoji: '🥉', bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-300' },
+const RANK_CONFIG: Record<number, { Icon: LucideIcon; bg: string; text: string; border: string }> = {
+  1: { Icon: Crown,  bg: 'bg-yellow-50',  text: 'text-yellow-700',  border: 'border-yellow-300' },
+  2: { Icon: Medal,  bg: 'bg-gray-50',    text: 'text-gray-600',    border: 'border-gray-300' },
+  3: { Icon: Award,  bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-300' },
 };
 
 const LEVEL_COLOR = (level: number) => {
@@ -37,10 +38,40 @@ const Leaderboard: React.FC = () => {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    axios.get(`${API_URL}/gamification/leaderboard`)
-      .then(res => setEntries(res.data))
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
+    const fetchLeaderboard = async () => {
+      try {
+        setLoading(true);
+        setError(false);
+        const response = await axios.get(`${API_URL}/gamification/leaderboard`);
+
+        const raw = response.data?.leaderboard
+          ?? response.data?.data
+          ?? response.data
+          ?? [];
+
+        const normalized = (Array.isArray(raw) ? raw : []).map((item: any) => ({
+          rank:          item.rank         ?? 0,
+          user_id:       item.user_id      ?? '',
+          name:          item.full_name    ?? item.name ?? 'Ανώνυμος',
+          email:         item.email,
+          xp:            item.points       ?? item.xp   ?? 0,
+          level:         item.level        ?? 1,
+          badges:        Array.isArray(item.badges) ? item.badges : [],
+          reports_count: item.reports_count,
+        }));
+
+        setEntries(normalized);
+        console.log('[Leaderboard] Loaded:', normalized.length, 'users');
+      } catch (err) {
+        console.error('[Leaderboard] Error:', err);
+        setError(true);
+        setEntries([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLeaderboard();
   }, []);
 
   const totalXP       = entries.reduce((s, e) => s + e.xp, 0);
@@ -133,7 +164,7 @@ const Leaderboard: React.FC = () => {
                     <td className="px-5 py-3 text-center">
                       {rankCfg ? (
                         <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold border ${rankCfg.bg} ${rankCfg.text} ${rankCfg.border}`}>
-                          {rankCfg.emoji}
+                          <rankCfg.Icon size={16}/>
                         </span>
                       ) : (
                         <span className="inline-flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold bg-[#1E3A5F]/5 text-[#1E3A5F]">
@@ -147,7 +178,7 @@ const Leaderboard: React.FC = () => {
                           className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0"
                           style={{ background: 'linear-gradient(135deg, #1E3A5F, #2E86AB)' }}
                         >
-                          {entry.name.charAt(0).toUpperCase()}
+                          {(entry.name || '?').charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <p className="font-semibold text-[#1E3A5F] text-sm">{entry.name}</p>

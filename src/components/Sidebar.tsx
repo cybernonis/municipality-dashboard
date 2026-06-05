@@ -5,10 +5,10 @@ import {
   LayoutDashboard, FileText, Map, BarChart2,
   Building2, Users, Clock, Trophy,
   Wifi, Layers, Brain, AlertTriangle, MessageSquare,
-  Settings, Bell, LogOut, FileSpreadsheet,
+  Settings, Bell, LogOut,
   ChevronLeft, ChevronRight, BellOff,
   Flame, Droplets, Wind, Globe, FileCheck,
-  Crown, Gamepad2, Megaphone, CalendarCheck,
+  Crown, Gamepad2, Megaphone, CalendarCheck, Bot, Wrench,
 } from 'lucide-react';
 
 const WS_URL = (process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app')
@@ -65,6 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'ΚΥΡΙΟ',
     items: [
       { path: '/dashboard',   label: 'Dashboard',      Icon: LayoutDashboard },
+      { path: '/ai-console',  label: 'AI Console',     Icon: Bot },
       { path: '/reports',     label: 'Αναφορές',       Icon: FileText },
       { path: '/map',         label: 'Χάρτης',         Icon: Map },
       { path: '/analytics',   label: 'Analytics',      Icon: BarChart2 },
@@ -74,7 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'ΔΙΑΧΕΙΡΙΣΗ',
     items: [
       { path: '/departments',  label: 'Τμήματα',        Icon: Building2 },
-      { path: '/staff',        label: 'Προσωπικό',      Icon: Users },
+      { path: '/crews',        label: 'Συνεργεία',      Icon: Wrench },
       { path: '/appointments', label: 'Ραντεβού',       Icon: CalendarCheck },
       { path: '/sla',          label: 'SLA',            Icon: Clock },
       { path: '/performance',  label: 'Performance',    Icon: Trophy },
@@ -89,17 +90,11 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'ΟΙΚΟΝΟΜΙΚΑ',
-    items: [
-      { path: '/financial-reports', label: 'Αναφορές', Icon: FileSpreadsheet },
-    ],
-  },
-  {
     label: 'ΕΚΤΑΚΤΑ & ΣΥΜΜΕΤΟΧΗ',
     items: [
-      { path: '/crisis',         label: 'Crisis',          Icon: AlertTriangle },
-      { path: '/participation',  label: 'Συμμετοχή',      Icon: MessageSquare },
-      { path: '/announcements',  label: 'Ανακοινώσεις',   Icon: Megaphone },
+      { path: '/crisis',        label: 'Crisis',        Icon: AlertTriangle },
+      { path: '/participation', label: 'Συμμετοχή',    Icon: MessageSquare },
+      { path: '/announcements', label: 'Ανακοινώσεις', Icon: Megaphone },
     ],
   },
   {

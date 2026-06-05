@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Flame, Globe, Wind, CloudRain, Droplets, Thermometer, AlertTriangle, X } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 const WS_URL = (process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app')
   .replace('https://', 'wss://')
@@ -12,15 +14,15 @@ interface Alert {
   timestamp: Date;
 }
 
-const ALERT_ICONS: Record<string, string> = {
-  fire:       '🔥',
-  earthquake: '🌍',
-  air:        '💨',
-  weather:    '⛈️',
-  flood:      '🌊',
-  wind:       '💨',
-  heat:       '🌡️',
-  rain:       '🌧️',
+const ALERT_ICONS: Record<string, LucideIcon> = {
+  fire:       Flame,
+  earthquake: Globe,
+  air:        Wind,
+  weather:    CloudRain,
+  flood:      Droplets,
+  wind:       Wind,
+  heat:       Thermometer,
+  rain:       CloudRain,
 };
 
 const ALERT_COLORS: Record<string, string> = {
@@ -111,8 +113,8 @@ const AlertBanner: React.FC = () => {
           key={alert.id}
           className={`${ALERT_COLORS[alert.type] || 'bg-gray-700'} text-white rounded-xl shadow-lg p-4 flex items-start gap-3`}
         >
-          <span className="text-2xl flex-shrink-0">
-            {ALERT_ICONS[alert.type] || '⚠️'}
+          <span className="flex-shrink-0 flex items-center">
+            {(() => { const Icon = ALERT_ICONS[alert.type] ?? AlertTriangle; return <Icon size={22} />; })()}
           </span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold leading-snug">{alert.message}</p>
@@ -122,9 +124,9 @@ const AlertBanner: React.FC = () => {
           </div>
           <button
             onClick={() => dismiss(alert.id)}
-            className="text-white opacity-75 hover:opacity-100 flex-shrink-0 text-lg leading-none"
+            className="text-white opacity-75 hover:opacity-100 flex-shrink-0 flex items-center"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
       ))}

@@ -11,14 +11,13 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Chatbot from './components/Chatbot';
 import AlertBanner from './components/AlertBanner';
-import Staff from './pages/Staff';
+import Crews from './pages/Crews';
 import { useEffect, useState } from 'react';
 import { requestNotificationPermission, onMessageListener } from './firebase';
 import axios from 'axios';
 import Participation from './pages/Participation';
 import Performance from './pages/Performance';
 import Payments from './pages/Payments';
-import FinancialReports from './pages/FinancialReports';
 import Crisis from './pages/Crisis';
 import SLA from './pages/SLA';
 import Predictive from './pages/Predictive';
@@ -29,6 +28,8 @@ import GamificationManagement from './pages/GamificationManagement';
 import Announcements from './pages/Announcements';
 import Appointments from './pages/Appointments';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import AIConsole from './pages/AIConsole';
+import DepartmentDetail from './pages/DepartmentDetail';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 const isLoggedIn = () => !!localStorage.getItem('token');
@@ -68,7 +69,7 @@ function App() {
     };
     initNotifications();
     onMessageListener().then((payload: any) => {
-      alert(`🔔 ${payload.notification.title}\n${payload.notification.body}`);
+      alert(`${payload.notification.title}\n${payload.notification.body}`);
     });
   }, []);
 
@@ -88,21 +89,23 @@ function App() {
                 <Route path="/analytics"         element={<Analytics />} />
                 <Route path="/map"               element={<MapPage />} />
                 <Route path="/departments"       element={<Departments />} />
+                <Route path="/departments/:id"  element={<DepartmentDetail />} />
                 <Route path="/settings"          element={<Settings />} />
                 <Route path="/participation"     element={<Participation />} />
                 <Route path="/performance"       element={<Performance />} />
                 <Route path="/payments"          element={<Payments />} />
-                <Route path="/financial-reports" element={<FinancialReports />} />
                 <Route path="/crisis"            element={<Crisis />} />
                 <Route path="/sla"               element={<SLA />} />
                 <Route path="/predictive"        element={<Predictive />} />
                 <Route path="/iot"               element={<IoT />} />
                 <Route path="/digital-twin"      element={<DigitalTwin />} />
-                <Route path="/staff"             element={<Staff />} />
+                <Route path="/crews"             element={<Crews />} />
+                <Route path="/staff"             element={<Navigate to="/crews" replace />} />
                 <Route path="/leaderboard"      element={<Leaderboard />} />
                 <Route path="/gamification"     element={<GamificationManagement />} />
                 <Route path="/announcements"    element={<Announcements />} />
                 <Route path="/appointments"     element={<Appointments />} />
+                <Route path="/ai-console"       element={<AIConsole />} />
               </Routes>
               <Chatbot />
               <AlertBanner />

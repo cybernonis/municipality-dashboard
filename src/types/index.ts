@@ -12,9 +12,23 @@ export interface Report {
   status: string;
   department_id: string;
   assigned_to: string | null;
+  crew_id: string | null;
   created_at: string;
   departments?: { name: string };
+  crews?: { id: string; name: string };
   report_updates?: any[];
+}
+
+export interface Crew {
+  id: string;
+  name: string;
+  department_id: string;
+  specialty?: string;
+  leader_name?: string;
+  members_count: number;
+  is_active: boolean;
+  active_reports_count: number;
+  departments?: { id: string; name: string };
 }
 
 export interface Department {

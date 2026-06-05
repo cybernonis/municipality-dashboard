@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getReport, updateReport } from '../services/api';
-import { Report } from '../types';
+import { getReport, updateReport, listCrews, assignReportToCrew } from '../services/api';
+import { Report, Crew } from '../types';
 import StatusBadge from '../components/StatusBadge';
-import axios from 'axios';
 import {
-  ArrowLeft, User, MapPin, CheckCircle, Clock, UserCheck,
-  ExternalLink, XCircle, FileText, Image, AlertTriangle, Loader,
+  ArrowLeft, MapPin, CheckCircle, Clock, Users,
+  ExternalLink, FileText, Image, AlertTriangle, Loader,
 } from 'lucide-react';
-
-const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
+import { sanitize } from '../utils/sanitize';
 
 const categoryLabels: Record<string, string> = {
   road_damage: 'Βλάβη Δρόμου',
@@ -19,13 +17,6 @@ const categoryLabels: Record<string, string> = {
   vandalism:   'Βανδαλισμός',
   fallen_tree: 'Πεσμένο Δέντρο',
   other:       'Άλλο',
-};
-
-const ROLE_LABELS: Record<string, string> = {
-  admin:     'Διαχειριστής',
-  manager:   'Προϊστάμενος',
-  worker:    'Εργάτης',
-  inspector: 'Επιθεωρητής',
 };
 
 const SEVERITY_LABELS: Record<string, { label: string; cls: string }> = {
@@ -43,8 +34,9 @@ const ReportDetail: React.FC = () => {
   const [comment, setComment] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [success, setSuccess] = useState(false);
-  const [staff, setStaff] = useState<any[]>([]);
-  const [assignedTo, setAssignedTo] = useState('');
+  const [crews, setCrews] = useState<Crew[]>([]);
+  const [selectedCrewId, setSelectedCrewId] = useState('');
+  const [crewsLoading, setCrewsLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
@@ -52,14 +44,18 @@ const ReportDetail: React.FC = () => {
       .then((r) => {
         setReport(r);
         setNewStatus(r.status);
-        setAssignedTo(r.assigned_to || '');
       })
       .finally(() => setLoading(false));
-
-    axios.get(`${API_URL}/staff/`)
-      .then(res => setStaff(res.data))
-      .catch(e => console.error('Staff load error:', e));
   }, [id]);
+
+  useEffect(() => {
+    if (!report?.department_id) return;
+    setCrewsLoading(true);
+    listCrews(report.department_id)
+      .then((data: Crew[]) => setCrews(data.filter(c => c.is_active)))
+      .catch(e => console.error('[CREWS] Load error:', e))
+      .finally(() => setCrewsLoading(false));
+  }, [report?.department_id]);
 
   const handleUpdate = async () => {
     if (!report) return;
@@ -76,24 +72,20 @@ const ReportDetail: React.FC = () => {
     }
   };
 
-  const handleAssign = async () => {
-    if (!report) return;
+  const handleAssignCrew = async () => {
+    if (!report || !selectedCrewId) {
+      alert('Παρακαλώ επιλέξτε συνεργείο');
+      return;
+    }
     setAssigning(true);
     try {
-      await axios.patch(`${API_URL}/reports/${report.id}`, {
-        status: assignedTo ? 'assigned' : newStatus,
-        assigned_to: assignedTo || null,
-        comment: assignedTo
-          ? `Ανατέθηκε σε ${staff.find(s => s.id === assignedTo)?.full_name || 'υπάλληλο'}`
-          : 'Αποδέσμευση υπαλλήλου',
-      });
-      setSuccess(true);
-      if (assignedTo) setNewStatus('assigned');
-      setTimeout(() => setSuccess(false), 3000);
+      await assignReportToCrew(report.id, selectedCrewId);
       const updated = await getReport(report.id);
       setReport(updated);
-    } catch {
-      alert('Σφάλμα κατά την ανάθεση');
+      setNewStatus(updated.status);
+      setSelectedCrewId('');
+    } catch (e: any) {
+      alert('Σφάλμα: ' + (e.message || e));
     } finally {
       setAssigning(false);
     }
@@ -113,7 +105,7 @@ const ReportDetail: React.FC = () => {
   );
 
   const updates = report.report_updates ?? [];
-  const assignedStaff = staff.find(s => s.id === report.assigned_to);
+  const assignedCrew = report.crew_id ? report.crews : null;
   const sevCfg = SEVERITY_LABELS[report.severity] || { label: report.severity, cls: 'text-gray-600' };
 
   return (
@@ -143,10 +135,10 @@ const ReportDetail: React.FC = () => {
                 </h2>
               </div>
               <div className="flex items-center gap-3">
-                {assignedStaff && (
+                {assignedCrew && (
                   <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
-                    <User className="w-3.5 h-3.5 text-[#2E86AB]" />
-                    <span className="text-sm text-[#1E3A5F] font-medium">{assignedStaff.full_name}</span>
+                    <Users className="w-3.5 h-3.5 text-[#2E86AB]" />
+                    <span className="text-sm text-[#1E3A5F] font-medium">{assignedCrew.name}</span>
                   </div>
                 )}
                 <StatusBadge status={report.status} />
@@ -155,7 +147,7 @@ const ReportDetail: React.FC = () => {
 
             {report.description && (
               <p className="text-gray-700 mb-5 bg-gray-50 p-3 rounded-lg text-sm border border-gray-100">
-                {report.description}
+                {sanitize(report.description)}
               </p>
             )}
 
@@ -219,60 +211,90 @@ const ReportDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Assign to Staff */}
+        {/* Assign to Crew */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-[#1E3A5F] px-5 py-3 flex items-center gap-2">
-            <UserCheck className="w-4 h-4 text-white/70" />
-            <span className="text-white text-sm font-semibold">Ανάθεση σε Υπάλληλο</span>
+            <Users className="w-4 h-4 text-white/70" />
+            <span className="text-white text-sm font-semibold">Ανάθεση σε Συνεργείο</span>
           </div>
           <div className="p-6">
-            {staff.length === 0 ? (
-              <p className="text-gray-400 text-sm">Δεν υπάρχουν διαθέσιμοι υπάλληλοι</p>
+            {assignedCrew && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-sm">
+                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                <span className="font-semibold text-green-800">Ανατέθηκε σε: {assignedCrew.name}</span>
+              </div>
+            )}
+
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {assignedCrew ? 'Αλλαγή συνεργείου' : 'Συνεργείο'}
+            </label>
+
+            {crewsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Loader className="w-4 h-4 animate-spin" />
+                Φόρτωση συνεργείων...
+              </div>
+            ) : crews.length === 0 ? (
+              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                ⚠️ Δεν υπάρχουν διαθέσιμα συνεργεία για αυτό το τμήμα.
+                <br />
+                Δημιουργήστε ένα στη σελίδα Τμήματα.
+              </div>
             ) : (
-              <div className="flex gap-3 items-end">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Υπάλληλος</label>
-                  <select
-                    value={assignedTo}
-                    onChange={e => setAssignedTo(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E86AB]"
-                  >
-                    <option value="">— Χωρίς ανάθεση —</option>
-                    {staff.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.full_name} ({ROLE_LABELS[s.role] || s.role})
-                        {s.departments?.name ? ` — ${s.departments.name}` : ''}
+              <>
+                <select
+                  value={selectedCrewId}
+                  onChange={e => setSelectedCrewId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E86AB]"
+                >
+                  <option value="">— Επιλέξτε συνεργείο —</option>
+                  {[...crews]
+                    .sort((a, b) => a.active_reports_count - b.active_reports_count)
+                    .map(crew => (
+                      <option key={crew.id} value={crew.id}>
+                        {crew.name}
+                        {crew.specialty ? ` (${crew.specialty})` : ''}
+                        {' · '}{crew.active_reports_count} ενεργές
+                        {' · '}{crew.members_count} μέλη
                       </option>
                     ))}
-                  </select>
-                </div>
+                </select>
+
+                {selectedCrewId && (() => {
+                  const sel = crews.find(c => c.id === selectedCrewId);
+                  if (!sel) return null;
+                  const workloadColor =
+                    sel.active_reports_count > 10 ? 'text-red-600' :
+                    sel.active_reports_count > 5 ? 'text-amber-600' :
+                    'text-emerald-600';
+                  return (
+                    <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded p-2 space-y-1">
+                      <div>
+                        <span className="font-semibold">Υπεύθυνος:</span>{' '}
+                        {sel.leader_name || '—'}
+                      </div>
+                      <div>
+                        <span className="font-semibold">Φόρτος εργασίας:</span>{' '}
+                        <span className={`font-bold ${workloadColor}`}>
+                          {sel.active_reports_count} ενεργές αναφορές
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <button
-                  onClick={handleAssign}
-                  disabled={assigning}
-                  className="flex items-center gap-2 bg-[#1E3A5F] text-white px-4 py-2 rounded-lg hover:bg-[#2E86AB] disabled:opacity-50 transition-colors font-medium text-sm whitespace-nowrap"
+                  onClick={handleAssignCrew}
+                  disabled={!selectedCrewId || assigning}
+                  className="mt-3 flex items-center gap-2 bg-[#1E3A5F] text-white px-4 py-2 rounded-lg hover:bg-[#2E86AB] disabled:opacity-40 transition-colors font-medium text-sm"
                 >
                   {assigning
                     ? <Loader className="w-4 h-4 animate-spin" />
                     : <CheckCircle className="w-4 h-4" />
                   }
-                  {assigning ? 'Ανάθεση...' : 'Ανάθεση'}
+                  {assigning ? 'Ανάθεση...' : 'Ανάθεση σε Συνεργείο'}
                 </button>
-              </div>
-            )}
-
-            {assignedStaff && (
-              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#2E86AB]/20 flex items-center justify-center flex-shrink-0">
-                  <User className="w-5 h-5 text-[#2E86AB]" />
-                </div>
-                <div>
-                  <p className="font-medium text-[#1E3A5F] text-sm">{assignedStaff.full_name}</p>
-                  <p className="text-xs text-[#2E86AB]">
-                    {ROLE_LABELS[assignedStaff.role]}
-                    {assignedStaff.phone ? ` · ${assignedStaff.phone}` : ''}
-                  </p>
-                </div>
-              </div>
+              </>
             )}
           </div>
         </div>

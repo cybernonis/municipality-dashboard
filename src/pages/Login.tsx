@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../services/api';
+import { Building2 } from 'lucide-react';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -37,7 +38,7 @@ const Login: React.FC = () => {
 
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="text-6xl mb-4">🏛</div>
+          <div className="flex justify-center mb-4"><Building2 className="w-16 h-16 text-blue-700" /></div>
           <h1 className="text-2xl font-bold text-gray-800">Δήμος Ηρακλείου</h1>
           <p className="text-gray-500 text-sm mt-1">Σύστημα Διαχείρισης Αναφορών</p>
         </div>
@@ -84,7 +85,7 @@ const Login: React.FC = () => {
             disabled={loading}
             className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium text-lg transition-colors"
           >
-            {loading ? '⏳ Σύνδεση...' : 'Σύνδεση'}
+            {loading ? 'Σύνδεση...' : 'Σύνδεση'}
           </button>
         </div>
 

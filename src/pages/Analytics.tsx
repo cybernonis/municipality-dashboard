@@ -72,7 +72,7 @@ const exportAnalyticsPDF = (reports: Report[], completionRate: number, highSever
       h3{color:#374151;margin-top:20px}
       .footer{margin-top:20px;font-size:11px;color:#9ca3af;text-align:center}
     </style></head><body>
-    <h1>📈 Analytics — Δήμος Ηρακλείου</h1>
+    <h1>Analytics — Δήμος Ηρακλείου</h1>
     <div class="meta">Εξαγωγή: ${new Date().toLocaleString('el-GR')} | Σύνολο: ${reports.length} αναφορές</div>
     <div class="kpis">
       <div class="kpi"><div class="kpi-value">${reports.length}</div><div class="kpi-label">Συνολικές Αναφορές</div></div>

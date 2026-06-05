@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
   Trophy, Star, Clock, Ticket, Users,
-  CheckCircle, XCircle, Medal,
+  CheckCircle, XCircle, Medal, Award,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import InfoButton from '../components/InfoButton';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
@@ -44,10 +45,10 @@ const Performance: React.FC = () => {
     }
   };
 
-  const getRankBadge = (i: number) => {
-    if (i === 0) return { text: '🥇', cls: 'bg-yellow-100 text-yellow-700 border border-yellow-300' };
-    if (i === 1) return { text: '🥈', cls: 'bg-gray-100 text-gray-600 border border-gray-300' };
-    if (i === 2) return { text: '🥉', cls: 'bg-orange-100 text-orange-700 border border-orange-300' };
+  const getRankBadge = (i: number): { Icon?: LucideIcon; text?: string; cls: string } => {
+    if (i === 0) return { Icon: Trophy, cls: 'bg-yellow-100 text-yellow-700 border border-yellow-300' };
+    if (i === 1) return { Icon: Medal,  cls: 'bg-gray-100 text-gray-600 border border-gray-300' };
+    if (i === 2) return { Icon: Award,  cls: 'bg-orange-100 text-orange-700 border border-orange-300' };
     return { text: `#${i+1}`, cls: 'bg-[#1E3A5F]/5 text-[#1E3A5F]' };
   };
 
@@ -146,7 +147,7 @@ const Performance: React.FC = () => {
                       }`}>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold ${rank.cls}`}>
-                          {rank.text}
+                          {rank.Icon ? <rank.Icon size={16}/> : rank.text}
                         </span>
                       </td>
                       <td className="px-4 py-3">

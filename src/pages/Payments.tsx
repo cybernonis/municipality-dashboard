@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { loadStripe } from '@stripe/stripe-js';
+import { CheckCircle, Lock } from 'lucide-react';
 import {
   Elements,
   CardElement,
@@ -9,7 +10,7 @@ import {
 } from '@stripe/react-stripe-js';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
-const stripePromise = loadStripe('pk_test_51TX9LACIMZTvCFxONeNAyaFP5wyCwsgEPJXCKKyOejYaWv8grxC8JttBnhkGabmfkCOo5mhEWdPJR03cM5BoFSuD005hoUYWtw');
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY!);
 
 interface PaymentType {
   key: string;
@@ -72,7 +73,7 @@ const CheckoutForm: React.FC<{
 
   if (success) return (
     <div className="text-center py-8">
-      <div className="text-5xl mb-4">✅</div>
+      <div className="flex justify-center mb-4"><CheckCircle className="w-16 h-16 text-green-500" /></div>
       <p className="text-green-600 font-bold text-lg">Η πληρωμή ολοκληρώθηκε!</p>
       <p className="text-gray-500 mt-2">Ποσό: €{amount.toFixed(2)}</p>
     </div>
@@ -103,11 +104,11 @@ const CheckoutForm: React.FC<{
         disabled={loading || !stripe}
         className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
       >
-        {loading ? '⏳ Επεξεργασία...' : `Πληρωμή €${amount.toFixed(2)}`}
+        {loading ? 'Επεξεργασία...' : `Πληρωμή €${amount.toFixed(2)}`}
       </button>
 
       <p className="text-xs text-gray-400 text-center">
-        🔒 Ασφαλής πληρωμή μέσω Stripe
+        <Lock className="w-3 h-3 inline mr-1" />Ασφαλής πληρωμή μέσω Stripe
       </p>
     </div>
   );

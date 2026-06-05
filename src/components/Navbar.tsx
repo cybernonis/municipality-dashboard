@@ -1,22 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  LayoutDashboard, FileText, TrendingUp, Map, Building2, Settings,
+  Users, Trophy, DollarSign, ShieldAlert, Clock, Cpu, Wifi, Globe,
+  UserCog, Flame, Wind, CloudRain, Droplets, CheckCircle, Bell, BellOff,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-const links = [
-  { path: '/dashboard',        label: 'Dashboard',      icon: '📊' },
-  { path: '/reports',          label: 'Αναφορές',       icon: '📋' },
-  { path: '/analytics',        label: 'Analytics',      icon: '📈' },
-  { path: '/map',              label: 'Χάρτης',         icon: '🗺' },
-  { path: '/departments',      label: 'Τμήματα',        icon: '🏛' },
-  { path: '/settings',         label: 'Ρυθμίσεις',      icon: '⚙' },
-  { path: '/participation',    label: 'Συμμετοχή',      icon: '🗳' },
-  { path: '/performance',      label: 'Performance',    icon: '🏆' },
-  { path: '/financial-reports',label: 'Οικονομικά',     icon: '💰' },
-  { path: '/crisis',           label: 'Crisis',         icon: '🆘' },
-  { path: '/sla',              label: 'SLA',            icon: '⏰' },
-  { path: '/predictive',       label: 'AI Predictions', icon: '🔮' },
-  { path: '/iot',              label: 'IoT',            icon: '📡' },
-  { path: '/digital-twin',     label: 'Digital Twin',   icon: '🏙️' },
-  { path: '/staff',            label: 'Προσωπικό',      icon: '👥' },
+const links: { path: string; label: string; Icon: LucideIcon }[] = [
+  { path: '/dashboard',        label: 'Dashboard',      Icon: LayoutDashboard },
+  { path: '/reports',          label: 'Αναφορές',       Icon: FileText },
+  { path: '/analytics',        label: 'Analytics',      Icon: TrendingUp },
+  { path: '/map',              label: 'Χάρτης',         Icon: Map },
+  { path: '/departments',      label: 'Τμήματα',        Icon: Building2 },
+  { path: '/settings',         label: 'Ρυθμίσεις',      Icon: Settings },
+  { path: '/participation',    label: 'Συμμετοχή',      Icon: Users },
+  { path: '/performance',      label: 'Performance',    Icon: Trophy },
+  { path: '/financial-reports',label: 'Οικονομικά',     Icon: DollarSign },
+  { path: '/crisis',           label: 'Crisis',         Icon: ShieldAlert },
+  { path: '/sla',              label: 'SLA',            Icon: Clock },
+  { path: '/predictive',       label: 'AI Predictions', Icon: Cpu },
+  { path: '/iot',              label: 'IoT',            Icon: Wifi },
+  { path: '/digital-twin',     label: 'Digital Twin',   Icon: Globe },
+  { path: '/staff',            label: 'Προσωπικό',      Icon: UserCog },
 ];
 
 interface Notification {
@@ -51,9 +57,9 @@ const WS_URL = (process.env.REACT_APP_API_URL || 'https://municipality-backend-p
   .replace('https://', 'wss://')
   .replace('http://', 'ws://');
 
-const TYPE_ICONS: Record<string, string> = {
-  fire: '🔥', earthquake: '🌍', air: '💨', weather: '⛈️',
-  flood: '🌊', crisis: '🆘', new_report: '📋', report_update: '✅',
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  fire: Flame, earthquake: Globe, air: Wind, weather: CloudRain,
+  flood: Droplets, crisis: ShieldAlert, new_report: FileText, report_update: CheckCircle,
 };
 
 const Navbar: React.FC = () => {
@@ -80,9 +86,9 @@ const Navbar: React.FC = () => {
           if (data.type === 'external_alert' && data.alerts?.length > 0) {
             const newNotifs: Notification[] = data.alerts.map((a: any) => ({
               id: `${Date.now()}-${Math.random()}`,
-              title: a.type === 'fire' ? '🔥 Φωτιά' :
-                     a.type === 'earthquake' ? '🌍 Σεισμός' :
-                     a.type === 'air' ? '💨 Ποιότητα Αέρα' : '⚠️ Ειδοποίηση',
+              title: a.type === 'fire' ? 'Φωτιά' :
+                     a.type === 'earthquake' ? 'Σεισμός' :
+                     a.type === 'air' ? 'Ποιότητα Αέρα' : 'Ειδοποίηση',
               message: a.message || '',
               time: new Date(),
               read: false,
@@ -98,7 +104,7 @@ const Navbar: React.FC = () => {
           if (data.type === 'new_report') {
             const notif: Notification = {
               id: `${Date.now()}`,
-              title: '📋 Νέα Αναφορά',
+              title: 'Νέα Αναφορά',
               message: `${data.data?.category || 'Αναφορά'} — ${data.data?.severity === 'high' ? 'Υψηλή' : 'Μέτρια'} σοβαρότητα`,
               time: new Date(),
               read: false,
@@ -157,7 +163,7 @@ const Navbar: React.FC = () => {
   const addTestNotification = () => {
     const notif: Notification = {
       id: `${Date.now()}`,
-      title: '🧪 Test Notification',
+      title: 'Test Notification',
       message: 'Αυτή είναι δοκιμαστική ειδοποίηση',
       time: new Date(),
       read: false,
@@ -175,7 +181,7 @@ const Navbar: React.FC = () => {
       {/* Top bar */}
       <div className="px-6 py-3 flex justify-between items-center border-b border-blue-600">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">🏛</span>
+          <Building2 className="w-7 h-7 flex-shrink-0" />
           <div>
             <h1 className="font-bold text-lg leading-none">Δήμος Ηρακλείου</h1>
             <p className="text-blue-200 text-xs">Σύστημα Διαχείρισης Αναφορών</p>
@@ -190,13 +196,13 @@ const Navbar: React.FC = () => {
             Δ
           </div>
 
-          {/* 🔔 Bell Notification */}
+          {/* Bell Notification */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setShowDropdown(!showDropdown)}
               className="relative w-9 h-9 bg-blue-600 hover:bg-blue-500 rounded-full flex items-center justify-center transition-colors"
             >
-              <span className="text-lg">🔔</span>
+              <Bell size={18} />
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center font-bold">
                   {unreadCount > 9 ? '9+' : unreadCount}
@@ -209,7 +215,7 @@ const Navbar: React.FC = () => {
               <div className="absolute right-0 top-12 w-80 bg-white rounded-xl shadow-2xl z-50 overflow-hidden border border-gray-200">
                 {/* Header */}
                 <div className="bg-blue-700 text-white px-4 py-3 flex items-center justify-between">
-                  <span className="font-bold text-sm">🔔 Ειδοποιήσεις</span>
+                  <span className="font-bold text-sm flex items-center gap-1"><Bell size={14}/> Ειδοποιήσεις</span>
                   <div className="flex gap-2">
                     <button onClick={markAllRead} className="text-xs text-blue-200 hover:text-white">
                       Όλα ως αναγνωσμένα
@@ -224,7 +230,7 @@ const Navbar: React.FC = () => {
                 <div className="max-h-80 overflow-y-auto">
                   {notifications.length === 0 ? (
                     <div className="text-center py-8 text-gray-400">
-                      <div className="text-3xl mb-2">🔕</div>
+                      <div className="flex justify-center mb-2"><BellOff size={28} className="text-gray-400" /></div>
                       <p className="text-sm">Δεν υπάρχουν ειδοποιήσεις</p>
                     </div>
                   ) : (
@@ -245,8 +251,8 @@ const Navbar: React.FC = () => {
                         }}
                       >
                         <div className="flex items-start gap-3">
-                          <span className="text-xl flex-shrink-0">
-                            {TYPE_ICONS[notif.type] || '📢'}
+                          <span className="flex-shrink-0 flex items-center">
+                            {(() => { const Icon = TYPE_ICONS[notif.type] ?? Bell; return <Icon size={20}/>; })()}
                           </span>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-800">{notif.title}</p>
@@ -305,7 +311,7 @@ const Navbar: React.FC = () => {
                 : 'border-transparent text-blue-200 hover:text-white hover:border-blue-300'
             }`}
           >
-            <span>{link.icon}</span>
+            <link.Icon className="w-4 h-4" />
             <span>{link.label}</span>
           </button>
         ))}

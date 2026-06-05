@@ -67,7 +67,7 @@ const exportToPDF = (reports: Report[]) => {
     <title>Αναφορές Δήμου Ηρακλείου</title>
     <style>body{font-family:Arial,sans-serif;padding:20px;color:#1f2937}h1{color:#1E3A5F;border-bottom:2px solid #1E3A5F;padding-bottom:10px}.meta{color:#6b7280;font-size:13px;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#1E3A5F;color:white;padding:8px;text-align:left}td{padding:7px 8px;border-bottom:1px solid #e5e7eb}tr:nth-child(even){background:#f9fafb}.footer{margin-top:20px;font-size:11px;color:#9ca3af;text-align:center}</style>
     </head><body>
-    <h1>🏛 Δήμος Ηρακλείου — Αναφορές Πολιτών</h1>
+    <h1>Δήμος Ηρακλείου — Αναφορές Πολιτών</h1>
     <div class="meta">Εκτυπώθηκε: ${new Date().toLocaleString('el-GR')} | Σύνολο: ${reports.length} αναφορές</div>
     <table><thead><tr><th>#</th><th>ID</th><th>Κατηγορία</th><th>Σοβαρότητα</th><th>Status</th><th>Διεύθυνση</th><th>Ημερομηνία</th></tr></thead>
     <tbody>${reports.map((r, i) => `<tr><td>${i+1}</td><td>${r.id.slice(0,8)}</td><td>${CATEGORY_LABELS[r.category]||r.category||'-'}</td><td>${SEVERITY_LABELS[r.severity]||r.severity||'-'}</td><td>${STATUS_LABELS[r.status]||r.status||'-'}</td><td>${r.address||'-'}</td><td>${new Date(r.created_at).toLocaleDateString('el-GR')}</td></tr>`).join('')}</tbody>

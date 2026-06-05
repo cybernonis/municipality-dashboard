@@ -238,8 +238,8 @@ const MapPage: React.FC = () => {
                               </span>
                             </div>
                             {report.address && (
-                              <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>
-                                📍 {report.address}
+                              <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <MapPin size={11}/> {report.address}
                               </p>
                             )}
                             {report.description && (

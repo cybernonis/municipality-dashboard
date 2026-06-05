@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
+import { Bot, MessageCircle, X, Send } from 'lucide-react';
+import { sanitize } from '../utils/sanitize';
+import api from '../services/api';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -35,7 +35,7 @@ const Chatbot: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/ai/chat/admin`, {
+      const response = await api.post('/ai/chat/admin', {
         messages: newMessages,
       });
 
@@ -68,7 +68,7 @@ const Chatbot: React.FC = () => {
         onClick={() => setOpen(!open)}
         className="fixed bottom-6 right-6 w-14 h-14 bg-blue-700 text-white rounded-full shadow-lg hover:bg-blue-800 flex items-center justify-center text-2xl z-50 transition-colors"
       >
-        {open ? '✕' : '💬'}
+        {open ? <X size={24}/> : <MessageCircle size={24}/>}
       </button>
 
       {/* Chat window */}
@@ -77,8 +77,8 @@ const Chatbot: React.FC = () => {
 
           {/* Header */}
           <div className="bg-blue-700 text-white p-4 rounded-t-2xl flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-xl">
-              🤖
+            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+              <Bot size={20} />
             </div>
             <div>
               <p className="font-bold">AI Βοηθός Διαχείρισης</p>
@@ -100,8 +100,8 @@ const Chatbot: React.FC = () => {
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
-                  <div className="w-7 h-7 bg-blue-700 rounded-full flex items-center justify-center text-xs mr-2 flex-shrink-0 mt-1">
-                    🤖
+                  <div className="w-7 h-7 bg-blue-700 rounded-full flex items-center justify-center mr-2 flex-shrink-0 mt-1">
+                    <Bot size={14} color="#fff"/>
                   </div>
                 )}
                 <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
@@ -109,14 +109,14 @@ const Chatbot: React.FC = () => {
                     ? 'bg-blue-600 text-white rounded-br-none'
                     : 'bg-gray-100 text-gray-800 rounded-bl-none'
                 }`}>
-                  {msg.content}
+                  {sanitize(msg.content)}
                 </div>
               </div>
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="w-7 h-7 bg-blue-700 rounded-full flex items-center justify-center text-xs mr-2">
-                  🤖
+                <div className="w-7 h-7 bg-blue-700 rounded-full flex items-center justify-center mr-2">
+                  <Bot size={14} color="#fff"/>
                 </div>
                 <div className="bg-gray-100 p-3 rounded-2xl rounded-bl-none">
                   <div className="flex gap-1">
@@ -161,7 +161,7 @@ const Chatbot: React.FC = () => {
               disabled={loading}
               className="w-10 h-10 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center"
             >
-              ➤
+              <Send size={18}/>
             </button>
           </div>
         </div>
