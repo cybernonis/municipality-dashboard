@@ -2,35 +2,23 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bot, Megaphone, Construction, ClipboardList, Users, MessageSquare,
   CalendarCheck, Wifi, AlertCircle, CreditCard, BarChart2, Trophy,
-  Settings, Search, AlertTriangle, Check, X, PlayCircle, Loader2,
-  CheckCircle, XCircle, RefreshCw, FileText, BookOpen, History,
-  ChevronUp, ChevronDown, Send,
+  Settings, Search, CheckCircle, XCircle, RefreshCw, BookOpen, History,
+  ChevronUp, ChevronDown, Send, AlertTriangle, Loader2,
 } from 'lucide-react';
+
+import { callAIAgent, type AIAgentMessage } from '../services/api';
+import { getActionLabel, getActionIcon } from '../utils/aiActionLabels';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://municipality-backend-production.up.railway.app';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Message {
-  id: string;
-  role: 'user' | 'ai' | 'system';
+interface ChatTurn {
+  role: 'user' | 'assistant';
   content: string;
+  toolCalls?: any[];
+  toolResults?: any[];
   timestamp: Date;
-  intent?: AIIntent;
-  status?: 'pending' | 'confirmed' | 'executing' | 'success' | 'failed';
-  result?: any;
-  error?: string;
-  audit_id?: string;
-}
-
-interface AIIntent {
-  action: string;
-  params: Record<string, any>;
-  missing_params?: string[];
-  confirmation_required: boolean;
-  summary: string;
-  confidence: number;
-  destructive?: boolean;
 }
 
 interface ActionMeta {
@@ -50,8 +38,8 @@ const CATEGORIES = [
   { key: 'announcements', Icon: Megaphone,    label: 'Ανακοινώσεις & Επικοινωνία', keywords: ['announcement', 'notify', 'broadcast', 'sms', 'email', 'push'] },
   { key: 'roads',         Icon: Construction, label: 'Κυκλοφορία & Δρόμοι',        keywords: ['road', 'traffic', 'close', 'route', 'street'] },
   { key: 'reports',       Icon: ClipboardList,label: 'Αναφορές',                    keywords: ['report', 'assign', 'resolve', 'ticket', 'issue'] },
-  { key: 'staff',         Icon: Users,        label: 'Τμήματα & Προσωπικό',         keywords: ['staff', 'department', 'employee', 'team', 'personnel'] },
-  { key: 'participation', Icon: MessageSquare,label: 'Συμμετοχή',                  keywords: ['participation', 'poll', 'vote', 'survey', 'citizen'] },
+  { key: 'staff',         Icon: Users,        label: 'Τμήματα & Συνεργεία',         keywords: ['staff', 'department', 'employee', 'team', 'personnel', 'crew'] },
+  { key: 'participation', Icon: MessageSquare,label: 'Συμμετοχή',                   keywords: ['participation', 'poll', 'vote', 'survey', 'citizen'] },
   { key: 'appointments',  Icon: CalendarCheck,label: 'Ραντεβού',                    keywords: ['appointment', 'schedule', 'booking', 'meeting'] },
   { key: 'iot',           Icon: Wifi,         label: 'IoT',                         keywords: ['iot', 'sensor', 'gateway', 'device', 'bin', 'parking', 'flood', 'smart'] },
   { key: 'crisis',        Icon: AlertCircle,  label: 'Κρίσεις',                     keywords: ['crisis', 'emergency', 'alert', 'evacuation', 'disaster'] },
@@ -59,28 +47,8 @@ const CATEGORIES = [
   { key: 'analytics',     Icon: BarChart2,    label: 'Αναλυτικά',                   keywords: ['analytics', 'stats', 'statistics', 'summary', 'performance'] },
   { key: 'gamification',  Icon: Trophy,       label: 'Gamification',                keywords: ['gamif', 'points', 'badge', 'leaderboard', 'reward', 'challenge'] },
   { key: 'system',        Icon: Settings,     label: 'Σύστημα',                     keywords: ['system', 'settings', 'config', 'backup', 'maintenance', 'admin'] },
-  { key: 'queries',       Icon: Search,       label: 'Queries',                      keywords: ['get_', 'list_', 'fetch_', 'query_', 'search_', 'show_', 'display_'] },
+  { key: 'queries',       Icon: Search,       label: 'Queries',                     keywords: ['get_', 'list_', 'fetch_', 'query_', 'search_', 'show_', 'display_'] },
 ];
-
-const WELCOME: Message = {
-  id: 'welcome',
-  role: 'ai',
-  content:
-    'Γεια σου! Είμαι ο AI βοηθός σου.\n\n' +
-    'Μπορώ να εκτελέσω 57 ενέργειες:\n\n' +
-    '• Δημιουργία ανακοινώσεων\n' +
-    '• Κλείσιμο δρόμων\n' +
-    '• Ανάθεση αναφορών\n' +
-    '• Διαχείριση IoT συσκευών\n' +
-    '• ... και πολλά άλλα\n\n' +
-    'Πες μου τι θέλεις να κάνω.\n\n' +
-    'Παραδείγματα:\n' +
-    '"Κλείσε την οδό Ικάρου αύριο 9:00"\n' +
-    '"Σημαντική ενημέρωση: διακοπή νερού"\n' +
-    '"Ανέθεσε την αναφορά #42 στην καθαριότητα"\n' +
-    '"Δείξε μου τα στατιστικά της εβδομάδας"',
-  timestamp: new Date(),
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,150 +60,70 @@ function getCategory(name: string): string {
   return 'system';
 }
 
-function formatTime(ts: string | Date): string {
-  try {
-    const d = typeof ts === 'string' ? new Date(ts) : ts;
-    return d.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
-}
+// ─── ToolCallCard ─────────────────────────────────────────────────────────────
 
-// ─── IntentCard ───────────────────────────────────────────────────────────────
+const TOOL_NAME_MAP: Record<string, string> = {
+  create_announcement:       'CREATE_ANNOUNCEMENT',
+  get_statistics:            'GET_STATISTICS',
+  list_pending_reports:      'LIST_PENDING_REPORTS',
+  list_crews:                'CREATE_CREW',
+  assign_report_to_crew:     'ASSIGN_CREW',
+  change_report_status:      'CHANGE_REPORT_STATUS',
+  close_road:                'CREATE_CLOSED_ROAD',
+  summarize_recent_activity: 'SUMMARIZE_RECENT_ACTIVITY',
+  forecast_trends:           'FORECAST_TRENDS',
+  system_health_check:       'SYSTEM_HEALTH_CHECK',
+  declare_crisis_event:      'DECLARE_CRISIS_EVENT',
+  get_department_performance:'GET_DEPARTMENT_PERFORMANCE',
+};
 
-interface IntentCardProps {
-  msg: Message;
-  onExecute: (msg: Message) => void;
-  onCancel: (msg: Message) => void;
-}
-
-const IntentCard: React.FC<IntentCardProps> = ({ msg, onExecute, onCancel }) => {
-  const { intent, status, result, error } = msg;
-  if (!intent) return null;
-
-  const destructive = intent.destructive;
+function ToolCallCard({ call, result }: { call: any; result?: any }) {
+  const success = result?.success !== false;
+  const code = TOOL_NAME_MAP[call.name] || call.name.toUpperCase();
 
   return (
-    <div
-      style={{
-        background: destructive ? '#FFF5F5' : '#fff',
-        border: `1px solid ${destructive ? '#FCA5A5' : '#E2E8F0'}`,
-        borderRadius: 12,
-        padding: 14,
-        marginTop: 8,
-        fontSize: 13,
-      }}
-    >
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {destructive && <span title="Καταστροφική ενέργεια"><AlertTriangle size={14} color="#EF4444" /></span>}
-          <span style={{ background: '#1E3A5F', color: '#fff', padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'monospace' }}>
-            {intent.action}
-          </span>
-          {destructive && (
-            <span style={{ fontSize: 11, color: '#EF4444', fontWeight: 600 }}>Καταστροφική ενέργεια</span>
-          )}
+    <div style={{
+      background: success ? '#F0FFF4' : '#FFF5F5',
+      border: `1px solid ${success ? '#86EFAC' : '#FCA5A5'}`,
+      borderRadius: 10,
+      padding: '10px 12px',
+      marginTop: 6,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 16 }}>{getActionIcon(code)}</span>
+          <span style={{ fontWeight: 700, fontSize: 12, color: '#1E293B' }}>{getActionLabel(code)}</span>
         </div>
-        <span style={{ fontSize: 11, color: '#9CA3AF' }}>
-          Confidence: {(intent.confidence * 100).toFixed(0)}%
+        <span style={{
+          fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600,
+          background: success ? '#DCFCE7' : '#FEE2E2',
+          color: success ? '#166534' : '#991B1B',
+        }}>
+          {success ? '✓ Επιτυχία' : '✗ Σφάλμα'}
         </span>
       </div>
-
-      {/* Summary */}
-      <p style={{ margin: '0 0 10px 0', color: '#374151', lineHeight: 1.5 }}>{intent.summary}</p>
-
-      {/* Params */}
-      {Object.keys(intent.params).length > 0 && (
-        <div style={{ background: '#F5F7FA', borderRadius: 6, padding: '6px 10px', marginBottom: 10 }}>
-          <strong style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Παράμετροι:</strong>
-          <pre style={{ margin: 0, fontSize: 11, color: '#374151', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {JSON.stringify(intent.params, null, 2)}
+      {result?.message && (
+        <p style={{ fontSize: 12, color: '#374151', margin: '0 0 4px 0' }}>{result.message}</p>
+      )}
+      {result?.error && (
+        <p style={{ fontSize: 12, color: '#991B1B', margin: '0 0 4px 0' }}>{result.error}</p>
+      )}
+      {result?.data && typeof result.data === 'object' && (
+        <details style={{ fontSize: 12 }}>
+          <summary style={{ cursor: 'pointer', color: '#64748B' }}>Λεπτομέρειες</summary>
+          <pre style={{ marginTop: 6, background: '#fff', padding: 8, borderRadius: 6, fontSize: 11, overflowX: 'auto', maxHeight: 150 }}>
+            {JSON.stringify(result.data, null, 2)}
           </pre>
-        </div>
-      )}
-
-      {/* Missing params */}
-      {intent.missing_params && intent.missing_params.length > 0 && (
-        <div style={{ background: '#FFFBEB', border: '1px solid #F6AE2D', borderRadius: 6, padding: '6px 10px', marginBottom: 10, fontSize: 12, color: '#92400E' }}>
-          <AlertTriangle size={12} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} />Λείπουν: {intent.missing_params.join(', ')}
-        </div>
-      )}
-
-      {/* Action buttons / result */}
-      {status === 'pending' && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          {intent.confirmation_required ? (
-            <>
-              <button
-                onClick={() => onExecute(msg)}
-                style={{ background: '#00C853', color: '#fff', padding: '7px 16px', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}
-              >
-                <Check size={13} /> Επιβεβαίωση & Εκτέλεση
-              </button>
-              <button
-                onClick={() => onCancel(msg)}
-                style={{ background: '#F5F5F5', color: '#666', padding: '7px 16px', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}
-              >
-                <X size={13} /> Άκυρο
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => onExecute(msg)}
-              style={{ background: '#2E86AB', color: '#fff', padding: '7px 16px', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            >
-              <PlayCircle size={13} /> Εκτέλεση
-            </button>
-          )}
-        </div>
-      )}
-
-      {status === 'executing' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, color: '#2E86AB', fontSize: 12 }}>
-          <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-          Εκτέλεση σε εξέλιξη...
-        </div>
-      )}
-
-      {status === 'success' && (
-        <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, padding: '8px 12px', marginTop: 10 }}>
-          <p style={{ margin: '0 0 4px 0', fontSize: 12, fontWeight: 700, color: '#166534', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle size={13} /> Ολοκληρώθηκε επιτυχώς</p>
-          {result && (
-            <pre style={{ margin: 0, fontSize: 11, color: '#374151', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 120, overflowY: 'auto' }}>
-              {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-            </pre>
-          )}
-        </div>
-      )}
-
-      {status === 'failed' && (
-        <div style={{ background: '#FFF5F5', border: '1px solid #FCA5A5', borderRadius: 8, padding: '8px 12px', marginTop: 10, fontSize: 12, color: '#991B1B' }}>
-          <XCircle size={13} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} />Αποτυχία: {error || 'Άγνωστο σφάλμα'}
-        </div>
+        </details>
       )}
     </div>
   );
-};
-
-// ─── MessageBubble ────────────────────────────────────────────────────────────
-
-interface MessageBubbleProps {
-  msg: Message;
-  onExecute: (msg: Message) => void;
-  onCancel: (msg: Message) => void;
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onExecute, onCancel }) => {
-  if (msg.role === 'system') {
-    return (
-      <div style={{ textAlign: 'center', color: '#9CA3AF', fontStyle: 'italic', fontSize: 12, padding: '4px 0' }}>
-        {msg.content}
-      </div>
-    );
-  }
+// ─── TurnCard ─────────────────────────────────────────────────────────────────
 
-  const isUser = msg.role === 'user';
+function TurnCard({ turn }: { turn: ChatTurn }) {
+  const isUser = turn.role === 'user';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start', gap: 4 }}>
@@ -246,49 +134,96 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onExecute, onCancel 
           </div>
         )}
         <div style={{ maxWidth: '100%' }}>
-          <div
-            style={{
-              background: isUser ? '#2E86AB' : '#F5F7FA',
-              color: isUser ? '#fff' : '#1E293B',
-              padding: '10px 14px',
-              borderRadius: isUser ? '12px 12px 0 12px' : '12px 12px 12px 0',
-              fontSize: 13,
-              lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {msg.content}
+          <div style={{
+            background: isUser ? '#2E86AB' : '#F5F7FA',
+            color: isUser ? '#fff' : '#1E293B',
+            padding: '10px 14px',
+            borderRadius: isUser ? '12px 12px 0 12px' : '12px 12px 12px 0',
+            fontSize: 13,
+            lineHeight: 1.6,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}>
+            {turn.content}
           </div>
-          {msg.intent && (
-            <IntentCard msg={msg} onExecute={onExecute} onCancel={onCancel} />
+          {turn.toolCalls && turn.toolCalls.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              {turn.toolCalls.map((call, i) => (
+                <ToolCallCard key={i} call={call} result={turn.toolResults?.[i]} />
+              ))}
+            </div>
           )}
         </div>
       </div>
-      <span style={{ fontSize: 10, color: '#CBD5E1', paddingLeft: isUser ? 0 : 40, paddingRight: isUser ? 0 : 0 }}>
-        {formatTime(msg.timestamp)}
+      <span style={{ fontSize: 10, color: '#CBD5E1', paddingLeft: isUser ? 0 : 40 }}>
+        {turn.timestamp.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })}
       </span>
     </div>
   );
-};
+}
+
+// ─── WelcomeCard ──────────────────────────────────────────────────────────────
+
+function WelcomeCard({ onExample }: { onExample: (prompt: string) => void }) {
+  const examples = [
+    { icon: '📢', title: 'Δημιουργία Ανακοίνωσης', prompt: 'Βγάλε ανακοίνωση για διακοπή νερού στην οδό Ικάρου αύριο 9 με 12' },
+    { icon: '🚧', title: 'Κλείσιμο Δρόμου',        prompt: 'Κλείσε την οδό 25ης Αυγούστου αύριο 8:00-14:00 λόγω έργων' },
+    { icon: '📊', title: 'Στατιστικά',             prompt: 'Δείξε μου τα στατιστικά αυτής της εβδομάδας' },
+    { icon: '👥', title: 'Συνεργεία',              prompt: 'Ποια συνεργεία είναι διαθέσιμα;' },
+  ];
+
+  return (
+    <div style={{ maxWidth: 560, margin: '0 auto', padding: '32px 0' }}>
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <div style={{ width: 64, height: 64, margin: '0 auto 12px', background: 'linear-gradient(135deg, #2E86AB, #8B5CF6)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Bot size={32} color="#fff" />
+        </div>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1E293B', margin: '0 0 8px' }}>
+          Είμαι ο AI Agent του Δήμου
+        </h2>
+        <p style={{ fontSize: 14, color: '#64748B', margin: 0, lineHeight: 1.6 }}>
+          Πες μου τι θέλεις και θα το κάνω. Καταλαβαίνω φυσική γλώσσα<br />
+          και εκτελώ άμεσα τις εντολές σου.
+        </p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {examples.map((ex, i) => (
+          <button
+            key={i}
+            onClick={() => onExample(ex.prompt)}
+            style={{ textAlign: 'left', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: 14, cursor: 'pointer' }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#2E86AB')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = '#E2E8F0')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 18 }}>{ex.icon}</span>
+              <span style={{ fontWeight: 700, fontSize: 13, color: '#1E293B' }}>{ex.title}</span>
+            </div>
+            <p style={{ fontSize: 12, color: '#64748B', margin: 0, lineHeight: 1.4 }}>"{ex.prompt}"</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const AIConsole: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([WELCOME]);
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [actions, setActions] = useState<ActionMeta[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const token = localStorage.getItem('token') || '';
   const userId = localStorage.getItem('user_id') || '1';
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [turns, loading]);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -315,81 +250,39 @@ const AIConsole: React.FC = () => {
     fetchHistory();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const executeAction = useCallback(async (msg: Message) => {
-    if (!msg.intent || !msg.audit_id) return;
-    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'executing' } : m));
-    try {
-      const resp = await fetch(`${API_URL}/ai-actions/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          action: msg.intent!.action,
-          params: msg.intent!.params,
-          user_id: userId,
-          confirmation_id: msg.audit_id,
-        }),
-      });
-      const result = await resp.json();
-      setMessages(prev => prev.map(m =>
-        m.id === msg.id
-          ? { ...m, status: result.success ? 'success' : 'failed', result: result.result, error: result.error }
-          : m
-      ));
-      fetchHistory();
-    } catch {
-      setMessages(prev => prev.map(m =>
-        m.id === msg.id ? { ...m, status: 'failed', error: 'Σφάλμα επικοινωνίας' } : m
-      ));
-    }
-  }, [token, userId, fetchHistory]);
+  const handleSend = async (text?: string) => {
+    const messageText = (text || input).trim();
+    if (!messageText || loading) return;
 
-  const cancelAction = useCallback((msg: Message) => {
-    setMessages(prev => prev.map(m =>
-      m.id === msg.id ? { ...m, status: 'failed', error: 'Ακυρώθηκε από τον χρήστη' } : m
-    ));
-  }, []);
-
-  const sendMessage = async () => {
-    if (!input.trim() || sending) return;
-    const userMsg: Message = {
-      id: `${Date.now()}-u`,
-      role: 'user',
-      content: input,
-      timestamp: new Date(),
-    };
-    setMessages(prev => [...prev, userMsg]);
+    setTurns(prev => [...prev, { role: 'user', content: messageText, timestamp: new Date() }]);
     setInput('');
-    setSending(true);
+    setLoading(true);
+
     try {
-      const resp = await fetch(`${API_URL}/ai-actions/parse`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: userMsg.content, user_id: userId }),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      const aiMsg: Message = {
-        id: `${Date.now()}-ai`,
-        role: 'ai',
-        content: data.intent?.summary || 'Κατάλαβα το αίτημα.',
+      const messages: AIAgentMessage[] = [
+        ...turns.slice(-10).map(t => ({ role: t.role as 'user' | 'assistant', content: t.content })),
+        { role: 'user' as const, content: messageText },
+      ];
+
+      const result = await callAIAgent(messages);
+
+      setTurns(prev => [...prev, {
+        role: 'assistant',
+        content: result.response,
+        toolCalls: result.tool_calls,
+        toolResults: result.tool_results,
         timestamp: new Date(),
-        intent: data.intent,
-        status: 'pending',
-        audit_id: data.audit_id,
-      };
-      setMessages(prev => [...prev, aiMsg]);
-      if (data.read_only || (!data.requires_confirmation && !data.destructive)) {
-        await executeAction(aiMsg);
-      }
-    } catch {
-      setMessages(prev => [...prev, {
-        id: `${Date.now()}-err`,
-        role: 'system',
-        content: 'Σφάλμα επικοινωνίας με τον AI.',
+      }]);
+      fetchHistory();
+    } catch (e: any) {
+      console.error('[AI AGENT] Error:', e);
+      setTurns(prev => [...prev, {
+        role: 'assistant',
+        content: `⚠️ Σφάλμα: ${e.message || 'Κάτι πήγε στραβά'}`,
         timestamp: new Date(),
       }]);
     } finally {
-      setSending(false);
+      setLoading(false);
     }
   };
 
@@ -407,10 +300,10 @@ const AIConsole: React.FC = () => {
   })).filter(cat => cat.items.length > 0);
 
   const QUICK = [
-    { label: 'Στατιστικά',  Icon: BarChart2,    text: 'Δείξε στατιστικά εβδομάδας' },
-    { label: 'Εκκρεμή',     Icon: ClipboardList, text: 'Λίστα εκκρεμών αναφορών' },
-    { label: 'Σύνοψη',      Icon: FileText,     text: 'Σύνοψη πρόσφατης δραστηριότητας' },
-    { label: 'Κρίσεις',     Icon: AlertCircle,  text: 'Ενεργές κρίσεις' },
+    { label: 'Στατιστικά', text: 'Δείξε στατιστικά εβδομάδας' },
+    { label: 'Εκκρεμή',   text: 'Ποιες είναι οι εκκρεμείς αναφορές;' },
+    { label: 'Σύνοψη',    text: 'Δώσε μου σύνοψη πρόσφατης δραστηριότητας' },
+    { label: '🩺 Health', text: 'Έλεγχος υγείας συστήματος' },
   ];
 
   return (
@@ -425,23 +318,31 @@ const AIConsole: React.FC = () => {
             <Bot size={22} color="#fff" />
           </div>
           <div>
-            <p style={{ color: '#fff', fontWeight: 700, fontSize: 15, margin: 0 }}>AI Admin Console</p>
-            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, margin: 0 }}>57 διαθέσιμες ενέργειες • Δήμος Ηρακλείου</p>
+            <p style={{ color: '#fff', fontWeight: 700, fontSize: 15, margin: 0 }}>AI Agent</p>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, margin: 0 }}>12 tools • Πες μου τι θέλεις να κάνω</p>
           </div>
-          <button
-            onClick={() => setMessages([WELCOME])}
-            style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.55)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}
-          >
-            Εκκαθάριση
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ background: 'rgba(0,200,83,0.2)', color: '#4ADE80', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
+              🟢 Active
+            </span>
+            <button
+              onClick={() => setTurns([])}
+              style={{ color: 'rgba(255,255,255,0.55)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}
+            >
+              Εκκαθάριση
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {messages.map(msg => (
-            <MessageBubble key={msg.id} msg={msg} onExecute={executeAction} onCancel={cancelAction} />
+          {turns.length === 0 && <WelcomeCard onExample={handleSend} />}
+
+          {turns.map((turn, i) => (
+            <TurnCard key={i} turn={turn} />
           ))}
-          {sending && (
+
+          {loading && (
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
               <div style={{ width: 32, height: 32, background: '#1E3A5F', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Bot size={17} color="#fff" />
@@ -455,7 +356,7 @@ const AIConsole: React.FC = () => {
               </div>
             </div>
           )}
-          <div ref={messagesEndRef} />
+          <div ref={chatEndRef} />
         </div>
 
         {/* Quick suggestions */}
@@ -463,10 +364,11 @@ const AIConsole: React.FC = () => {
           {QUICK.map(s => (
             <button
               key={s.text}
-              onClick={() => setInput(s.text)}
-              style={{ fontSize: 12, background: '#EFF6FF', color: '#2E86AB', padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              onClick={() => handleSend(s.text)}
+              disabled={loading}
+              style={{ fontSize: 12, background: '#EFF6FF', color: '#2E86AB', padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 500 }}
             >
-              <s.Icon size={12} />{s.label}
+              {s.label}
             </button>
           ))}
         </div>
@@ -474,17 +376,18 @@ const AIConsole: React.FC = () => {
         {/* Input */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0 }}>
           <textarea
-            placeholder="Πες μου τι θέλεις να κάνω..."
+            placeholder='Πες μου τι θέλεις να κάνω... (π.χ. "Βγάλε ανακοίνωση για διακοπή νερού αύριο 9-12")'
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            disabled={loading}
             rows={2}
             style={{ flex: 1, border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 12px', fontSize: 13, resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, color: '#1E293B' }}
           />
           <button
-            onClick={sendMessage}
-            disabled={!input.trim() || sending}
-            style={{ width: 44, height: 44, background: '#2E86AB', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: (!input.trim() || sending) ? 0.45 : 1, transition: 'opacity 0.15s', flexShrink: 0 }}
+            onClick={() => handleSend()}
+            disabled={!input.trim() || loading}
+            style={{ width: 44, height: 44, background: '#2E86AB', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: (!input.trim() || loading) ? 0.45 : 1, transition: 'opacity 0.15s', flexShrink: 0 }}
           >
             <Send size={18} />
           </button>
@@ -520,14 +423,15 @@ const AIConsole: React.FC = () => {
                       {cat.items.map(a => (
                         <div
                           key={a.name}
-                          onClick={() => setInput(`Εκτέλεσε: ${a.name}`)}
+                          onClick={() => handleSend(`Εκτέλεσε: ${getActionLabel(a.name)}`)}
                           style={{ padding: '5px 12px', fontSize: 12, color: '#4B5563', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
                           onMouseEnter={e => (e.currentTarget.style.background = '#F0F4F8')}
                           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                           title={a.description ?? ''}
                         >
                           {a.destructive && <AlertTriangle size={11} color="#EF4444" />}
-                          <span style={{ fontFamily: 'monospace', background: '#F0F4F8', padding: '1px 5px', borderRadius: 4, fontSize: 11 }}>{a.name}</span>
+                          <span style={{ marginRight: 2 }}>{getActionIcon(a.name)}</span>
+                          <span style={{ fontSize: 11, color: '#374151' }}>{getActionLabel(a.name)}</span>
                         </div>
                       ))}
                     </div>
@@ -554,14 +458,18 @@ const AIConsole: React.FC = () => {
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {h.action_type ?? h.action ?? 'Ενέργεια'}
+                      {getActionIcon(h.action_type ?? h.action ?? '')} {getActionLabel(h.action_type ?? h.action ?? 'Ενέργεια')}
                     </p>
                     <p style={{ fontSize: 11, color: '#9CA3AF', margin: 0 }}>
-                      {formatTime(h.created_at ?? h.timestamp ?? new Date())}
+                      {h.created_at ? new Date(h.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' }) : ''}
                     </p>
                   </div>
                   <span style={{ flexShrink: 0, display: 'flex' }}>
-                    {h.status === 'success' ? <CheckCircle size={15} color="#00C853" /> : h.status === 'failed' ? <XCircle size={15} color="#EF4444" /> : h.status === 'pending' ? <Loader2 size={15} color="#F6AE2D" /> : <RefreshCw size={15} color="#9CA3AF" />}
+                    {h.status === 'success'
+                      ? <CheckCircle size={15} color="#00C853" />
+                      : h.status === 'failed'
+                        ? <XCircle size={15} color="#EF4444" />
+                        : <Loader2 size={15} color="#F6AE2D" />}
                   </span>
                 </div>
               ))}

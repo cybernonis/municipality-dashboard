@@ -38,12 +38,25 @@ interface SLASummary {
 }
 
 const categoryLabels: Record<string, string> = {
-  road_damage: 'Βλάβη Δρόμου', lighting: 'Φωτισμός', waste: 'Σκουπίδια',
-  water_leak: 'Νερό', vandalism: 'Βανδαλισμός', fallen_tree: 'Δέντρο', other: 'Άλλο',
+  pothole:     'Λακκούβα',
+  road_damage: 'Βλάβη Δρόμου',
+  water_leak:  'Διαρροή Νερού',
+  vandalism:   'Βανδαλισμός',
+  fallen_tree: 'Πεσμένο Δέντρο',
+  lighting:    'Φωτισμός',
+  trash:       'Σκουπίδια',
+  waste:       'Σκουπίδια',
+  graffiti:    'Γκράφιτι',
+  noise:       'Θόρυβος',
+  parking:     'Παρκάρισμα',
+  other:       'Άλλο',
 };
 
 const SEVERITY_LABELS: Record<string, string> = {
-  high: 'Υψηλή', medium: 'Μέτρια', low: 'Χαμηλή',
+  critical: 'Κρίσιμη',
+  high:     'Υψηλή',
+  medium:   'Μέτρια',
+  low:      'Χαμηλή',
 };
 
 const slaBadgeCls = (status: string) => ({
@@ -61,9 +74,10 @@ const slaProgressCls = (status: string) => ({
 }[status] ?? 'bg-gray-400');
 
 const severityCls = (s: string) => ({
-  high:   'bg-red-100 text-red-700',
-  medium: 'bg-amber-100 text-amber-700',
-  low:    'bg-emerald-100 text-emerald-700',
+  critical: 'bg-red-200 text-red-800',
+  high:     'bg-red-100 text-red-700',
+  medium:   'bg-amber-100 text-amber-700',
+  low:      'bg-emerald-100 text-emerald-700',
 }[s] ?? 'bg-gray-100 text-gray-600');
 
 const exportSLACSV = (reports: SLAReport[]) => {

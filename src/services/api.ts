@@ -185,4 +185,64 @@ export const assignReportToCrew = async (reportId: string, crewId: string) => {
   return response.data;
 };
 
+// AI AGENT
+
+export interface AIAgentMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AIAgentToolCall {
+  name: string;
+  input: Record<string, any>;
+}
+
+export interface AIAgentToolResult {
+  success: boolean;
+  message?: string;
+  data?: any;
+  error?: string;
+}
+
+export interface AIAgentResponse {
+  response: string;
+  tool_calls: AIAgentToolCall[];
+  tool_results: AIAgentToolResult[];
+  iterations: number;
+}
+
+export async function callAIAgent(
+  messages: AIAgentMessage[]
+): Promise<AIAgentResponse> {
+  const token = localStorage.getItem('token');
+  const userId = localStorage.getItem('user_id') || '';
+
+  if (!userId) {
+    throw new Error('Δεν είστε συνδεδεμένος');
+  }
+
+  const response = await fetch(`${API_URL}/ai/agent/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ user_id: userId, messages }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error('[AI AGENT]', response.status, errorBody);
+    throw new Error(`Agent error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function listAgentTools() {
+  const response = await fetch(`${API_URL}/ai/agent/tools`);
+  if (!response.ok) return { tools: [], count: 0 };
+  return response.json();
+}
+
 export default api;

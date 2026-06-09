@@ -35,13 +35,15 @@ const Chatbot: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await api.post('/ai/chat/admin', {
+      const userId = localStorage.getItem('user_id') || '';
+      const response = await api.post('/ai/chat', {
+        user_id: userId,
         messages: newMessages,
       });
 
       setMessages([...newMessages, {
         role: 'assistant',
-        content: response.data.response
+        content: response.data.response ?? 'Δεν έλαβα απάντηση.'
       }]);
     } catch (e) {
       setMessages([...newMessages, {
