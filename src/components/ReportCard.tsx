@@ -15,6 +15,10 @@ const categoryLabels: Record<string, string> = {
   vandalism: 'Βανδαλισμός',
   fallen_tree: 'Πεσμένο Δέντρο',
   other: 'Άλλο',
+  pothole: 'Λακκούβα',
+  water: 'Ύδρευση',
+  green: 'Πράσινο',
+  signage: 'Σήμανση',
 };
 
 const severityColors: Record<string, string> = {

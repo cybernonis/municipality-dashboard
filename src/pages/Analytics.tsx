@@ -14,6 +14,7 @@ import InfoButton from '../components/InfoButton';
 const categoryLabels: Record<string, string> = {
   road_damage: 'Δρόμοι', lighting: 'Φωτισμός', waste: 'Σκουπίδια',
   water_leak: 'Νερό', vandalism: 'Βανδαλισμός', fallen_tree: 'Πράσινο', other: 'Άλλο',
+  pothole: 'Λακκούβα', water: 'Ύδρευση', green: 'Πράσινο', signage: 'Σήμανση',
 };
 
 const exportAnalyticsCSV = (reports: Report[]) => {

@@ -65,6 +65,10 @@ const categoryLabels: Record<string, string> = {
   vandalism:   'Βανδαλισμός',
   fallen_tree: 'Πράσινο',
   other:       'Άλλο',
+  pothole:     'Λακκούβα',
+  water:       'Ύδρευση',
+  green:       'Πράσινο',
+  signage:     'Σήμανση',
 };
 
 const RISK_BADGE: Record<string, string> = {

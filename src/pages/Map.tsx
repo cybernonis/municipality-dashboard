@@ -15,6 +15,7 @@ const HERAKLION: [number, number] = [35.3387, 25.1442];
 const CATEGORY_LABELS: Record<string, string> = {
   road_damage: 'Βλάβη Δρόμου', lighting: 'Φωτισμός', waste: 'Σκουπίδια',
   water_leak: 'Νερό', vandalism: 'Βανδαλισμός', fallen_tree: 'Πράσινο', other: 'Άλλο',
+  pothole: 'Λακκούβα', water: 'Ύδρευση', green: 'Πράσινο', signage: 'Σήμανση',
 };
 
 const STATUS_LABELS: Record<string, string> = {

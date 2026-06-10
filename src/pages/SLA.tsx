@@ -50,6 +50,9 @@ const categoryLabels: Record<string, string> = {
   noise:       'Θόρυβος',
   parking:     'Παρκάρισμα',
   other:       'Άλλο',
+  water:       'Ύδρευση',
+  green:       'Πράσινο',
+  signage:     'Σήμανση',
 };
 
 const SEVERITY_LABELS: Record<string, string> = {
