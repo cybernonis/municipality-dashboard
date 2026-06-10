@@ -108,35 +108,46 @@ const CrisisPanel: React.FC<Props> = ({ map, styleReady, open, onClose, backend 
   // ── Map sources/layers (once) ──
   useEffect(() => {
     if (!map || !styleReady) return;
-    if (!map.getSource('crisis-zones-src')) map.addSource('crisis-zones-src', { type: 'geojson', data: empty as any });
-    if (!map.getSource('crisis-epi-src')) map.addSource('crisis-epi-src', { type: 'geojson', data: empty as any });
-    if (!map.getLayer('crisis-zones-lyr')) map.addLayer({ id: 'crisis-zones-lyr', type: 'fill', source: 'crisis-zones-src', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.16 } });
-    if (!map.getLayer('crisis-zones-line')) map.addLayer({ id: 'crisis-zones-line', type: 'line', source: 'crisis-zones-src', paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.6 } });
-    if (!map.getLayer('crisis-epi-lyr')) map.addLayer({ id: 'crisis-epi-lyr', type: 'circle', source: 'crisis-epi-src', paint: { 'circle-radius': 8, 'circle-color': C.critical, 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
+    try {
+      if (!map.getSource('crisis-zones-src')) map.addSource('crisis-zones-src', { type: 'geojson', data: empty as any });
+      if (!map.getSource('crisis-epi-src')) map.addSource('crisis-epi-src', { type: 'geojson', data: empty as any });
+      if (!map.getLayer('crisis-zones-lyr')) map.addLayer({ id: 'crisis-zones-lyr', type: 'fill', source: 'crisis-zones-src', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.16 } });
+      if (!map.getLayer('crisis-zones-line')) map.addLayer({ id: 'crisis-zones-line', type: 'line', source: 'crisis-zones-src', paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.6 } });
+      if (!map.getLayer('crisis-epi-lyr')) map.addLayer({ id: 'crisis-epi-lyr', type: 'circle', source: 'crisis-epi-src', paint: { 'circle-radius': 8, 'circle-color': C.critical, 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
+    } catch {}
     return () => {
-      ['crisis-zones-lyr', 'crisis-zones-line', 'crisis-epi-lyr'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
-      ['crisis-zones-src', 'crisis-epi-src'].forEach(id => { if (map.getSource(id)) map.removeSource(id); });
+      // map.style is nulled by map.remove(); bail rather than throwing.
+      if (!(map as any).style) return;
+      try {
+        ['crisis-zones-lyr', 'crisis-zones-line', 'crisis-epi-lyr'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
+        ['crisis-zones-src', 'crisis-epi-src'].forEach(id => { if (map.getSource(id)) map.removeSource(id); });
+      } catch {}
     };
   }, [map, styleReady]);
 
   // ── Render zones + epicenter ──
   useEffect(() => {
-    if (!map || !styleReady) return;
-    const center = epicenter ?? CENTER;
-    const sorted = [...zones].sort((a, b) => b.radius - a.radius);
-    const zsrc = map.getSource('crisis-zones-src') as mapboxgl.GeoJSONSource | undefined;
-    const esrc = map.getSource('crisis-epi-src') as mapboxgl.GeoJSONSource | undefined;
-    zsrc?.setData(fc(sorted.map(z => ({ type: 'Feature', properties: { color: zoneColor(z.level) }, geometry: { type: 'Polygon', coordinates: [circleRing(center[0], center[1], z.radius)] } }))) as any);
-    esrc?.setData(fc(epicenter ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: epicenter } }] : []) as any);
+    if (!map || !styleReady || !(map as any).style) return;
+    try {
+      const center = epicenter ?? CENTER;
+      const sorted = [...zones].sort((a, b) => b.radius - a.radius);
+      const zsrc = map.getSource('crisis-zones-src') as mapboxgl.GeoJSONSource | undefined;
+      const esrc = map.getSource('crisis-epi-src') as mapboxgl.GeoJSONSource | undefined;
+      zsrc?.setData(fc(sorted.map(z => ({ type: 'Feature', properties: { color: zoneColor(z.level) }, geometry: { type: 'Polygon', coordinates: [circleRing(center[0], center[1], z.radius)] } }))) as any);
+      esrc?.setData(fc(epicenter ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: epicenter } }] : []) as any);
+    } catch {}
   }, [map, styleReady, zones, epicenter]);
 
   // ── Epicenter picking (κλικ στον χάρτη) ──
   useEffect(() => {
-    if (!map || !picking) return;
-    map.getCanvas().style.cursor = 'crosshair';
+    if (!map || !picking || !(map as any).style) return;
+    try { map.getCanvas().style.cursor = 'crosshair'; } catch {}
     const handler = (e: mapboxgl.MapMouseEvent) => { setEpicenter([e.lngLat.lng, e.lngLat.lat]); setPicking(false); };
     map.once('click', handler);
-    return () => { map.off('click', handler as any); if (map.getCanvas()) map.getCanvas().style.cursor = ''; };
+    return () => {
+      try { map.off('click', handler as any); } catch {}
+      try { if (map.getCanvas()) map.getCanvas().style.cursor = ''; } catch {}
+    };
   }, [map, picking]);
 
   const buildParams = useCallback(() => ({ floodLevel, fireDrought, quakeMag, quakeTsunami, heatPeak, frostTemp, epicenter }), [floodLevel, fireDrought, quakeMag, quakeTsunami, heatPeak, frostTemp, epicenter]);
