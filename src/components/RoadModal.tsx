@@ -1,11 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
-import { Construction, MapPin, X } from 'lucide-react';
+import { Construction, MapPin, X, Search } from 'lucide-react';
 
 const C = { navy: '#1E3A5F', secondary: '#2E86AB', accent: '#F6AE2D' };
 
 const REASONS = ['Έργα', 'Ατύχημα', 'Εκδήλωση', 'Έκτακτο', 'Συντήρηση'] as const;
 type Reason = typeof REASONS[number];
+
+// Heraklion bounding box and center for geocoding bias
+const GEO_PROXIMITY = '25.1442,35.3387';
+const GEO_BBOX = '24.9,35.2,25.4,35.5';
+
+interface GeoFeature {
+  id: string;
+  text: string;
+  place_name: string;
+  geometry: { coordinates: [number, number] };
+}
 
 interface Props {
   map: mapboxgl.Map | null;
@@ -39,6 +50,15 @@ const RM_CSS = `
 .rm-hint{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:600;
   background:rgba(30,58,95,.93);color:#fff;padding:9px 18px;border-radius:9px;
   font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;white-space:nowrap;}
+.rm-geo-drop{position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;
+  border:1px solid #E2E8F0;border-radius:0 0 9px 9px;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:700;max-height:210px;overflow-y:auto;}
+.rm-geo-drop::-webkit-scrollbar{width:3px;}
+.rm-geo-drop::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:2px;}
+.rm-geo-row{width:100%;padding:9px 12px;background:none;border:none;border-bottom:1px solid #F1F5F9;
+  text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px;color:#1A202C;}
+.rm-geo-row:hover{background:#F8FAFC;}
+.rm-geo-row:last-child{border-bottom:none;}
 `;
 
 const RoadModal: React.FC<Props> = ({ map, open, onClose, onCreated, backend, authHeaders }) => {
@@ -54,13 +74,65 @@ const RoadModal: React.FC<Props> = ({ map, open, onClose, onCreated, backend, au
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState({ show: false, msg: '', ok: true });
 
+  // Geocoder state
+  const [geoResults, setGeoResults] = useState<GeoFeature[]>([]);
+  const [geoOpen, setGeoOpen] = useState(false);
+  const skipNextGeoRef = useRef(false); // suppress search after selecting a result
+  const geoContainerRef = useRef<HTMLDivElement>(null);
+
   // Reset form on open; cancel picking if modal closes mid-pick
   useEffect(() => {
-    if (!open) { setPicking(false); return; }
+    if (!open) { setPicking(false); setGeoResults([]); setGeoOpen(false); return; }
     setRoadName(''); setReason('Έργα'); setDescription('');
     setStartDate(today()); setEndDate('');
     setMakeAnnouncement(true); setIsUrgent(false); setCoord(null);
+    setGeoResults([]); setGeoOpen(false);
   }, [open]);
+
+  // Debounced geocoding — biased to Heraklion via proximity + bbox, Greek language
+  useEffect(() => {
+    if (skipNextGeoRef.current) { skipNextGeoRef.current = false; return; }
+    if (!roadName || roadName.length < 2) { setGeoResults([]); setGeoOpen(false); return; }
+    const token = process.env.REACT_APP_MAPBOX_TOKEN || '';
+    if (!token) return;
+    const t = setTimeout(async () => {
+      try {
+        const url =
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(roadName)}.json` +
+          `?access_token=${token}&proximity=${GEO_PROXIMITY}&bbox=${GEO_BBOX}` +
+          `&language=el&types=address,poi,neighborhood&limit=5`;
+        const r = await fetch(url);
+        if (!r.ok) return;
+        const d = await r.json();
+        const features: GeoFeature[] = d.features ?? [];
+        setGeoResults(features);
+        setGeoOpen(features.length > 0);
+      } catch {}
+    }, 300);
+    return () => clearTimeout(t);
+  }, [roadName]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (geoContainerRef.current && !geoContainerRef.current.contains(e.target as Node)) {
+        setGeoOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  const selectGeoResult = (feat: GeoFeature) => {
+    skipNextGeoRef.current = true;
+    setRoadName(feat.text ?? feat.place_name.split(',')[0]);
+    setGeoOpen(false);
+    const [lng, lat] = feat.geometry.coordinates;
+    setCoord([lng, lat]);
+    if (map && (map as any).style) {
+      try { map.flyTo({ center: [lng, lat], zoom: 16, duration: 700 }); } catch {}
+    }
+  };
 
   // Map click picking — cleanup fires if picking→false OR component unmounts
   useEffect(() => {
@@ -162,14 +234,43 @@ const RoadModal: React.FC<Props> = ({ map, open, onClose, onCreated, backend, au
             </div>
 
             <div className="rm-body">
-              <div className="rm-field">
+
+              {/* Road name with geocoder autocomplete */}
+              <div className="rm-field" ref={geoContainerRef} style={{ position: 'relative' }}>
                 <label className="rm-label">Όνομα δρόμου *</label>
-                <input
-                  className="rm-input"
-                  value={roadName}
-                  onChange={e => setRoadName(e.target.value)}
-                  placeholder="π.χ. Οδός Δικαιοσύνης"
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="rm-input"
+                    style={{ paddingRight: 32 }}
+                    value={roadName}
+                    onChange={e => setRoadName(e.target.value)}
+                    onFocus={() => geoResults.length > 0 && setGeoOpen(true)}
+                    placeholder="π.χ. Οδός Δικαιοσύνης"
+                    autoComplete="off"
+                  />
+                  <Search size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none' }} />
+                </div>
+                {geoOpen && geoResults.length > 0 && (
+                  <div className="rm-geo-drop">
+                    {geoResults.map(feat => (
+                      <button
+                        key={feat.id}
+                        className="rm-geo-row"
+                        onMouseDown={e => { e.preventDefault(); selectGeoResult(feat); }}
+                      >
+                        <MapPin size={13} style={{ flexShrink: 0, color: C.secondary }} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {feat.text}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#94A3B8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {feat.place_name}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="rm-field">

@@ -6,7 +6,7 @@ import {
   Layers, Construction, Radio, Settings, X, Bell, Globe, Car, Activity,
   Trash2, Droplets, Wifi, RotateCcw, Maximize2, Plus, Minus, Box,
   Sun, Ship, ClipboardList, Loader2, BarChart3, Wind, TrafficCone,
-  CheckCircle, RefreshCw,
+  CheckCircle, RefreshCw, AlertTriangle,
 } from 'lucide-react';
 import LiveTrafficDrawer from '../components/LiveTrafficDrawer';
 import CrisisPanel from '../components/CrisisPanel';
@@ -387,7 +387,11 @@ const DigitalTwin: React.FC = () => {
   }, [styleReady, external]);
   useEffect(() => {
     if (!styleReady) return;
-    const feats = segments.filter(s => Array.isArray(s.points) && s.points.length >= 2)
+    // Only render medium+ segments (jf >= 5 = orange/red). The API returns ~10 free-flow
+    // green segments (jf 0–1.6) that visually bury the 2–3 orange segments against the
+    // map background. Filtering to jf >= 5 matches LiveTrafficDrawer's orange+red buckets.
+    const feats = segments
+      .filter(s => Array.isArray(s.points) && s.points.length >= 2 && (s.jamFactor ?? s.jam_factor ?? 0) >= 5)
       .map(s => ({ type: 'Feature', properties: { color: colorForJam(s.jamFactor ?? s.jam_factor ?? 0) }, geometry: { type: 'LineString', coordinates: s.points.map((p: any) => [p.lng ?? p.longitude, p.lat ?? p.latitude]) } }));
     setSrc('traffic-src', fc(feats));
   }, [styleReady, segments]);
@@ -446,7 +450,7 @@ const DigitalTwin: React.FC = () => {
           <nav className="dt2-rail">
             <button className={`dt2-nb${layersPanel ? ' on' : ''}`} title="Επίπεδα" onClick={() => openPanel('layers')}><Layers size={18} /></button>
             <button className={`dt2-nb${iotPanel ? ' on' : ''}`} title="IoT" onClick={() => openPanel('iot')}><Radio size={18} /></button>
-            <button className={`dt2-nb${crisisOpen ? ' on' : ''}`} title="Κρίσεις" onClick={() => openPanel('crisis')}><Construction size={18} /></button>
+            <button className={`dt2-nb${crisisOpen ? ' on' : ''}`} title="Κρίσεις" onClick={() => openPanel('crisis')}><AlertTriangle size={18} /></button>
             <button className={`dt2-nb${settingsPanel ? ' on' : ''}`} title="Ρυθμίσεις" onClick={() => openPanel('settings')}><Settings size={18} /></button>
             <button className={`dt2-nb${roadModalOpen ? ' on' : ''}`} title="Κλειστός δρόμος" onClick={() => setRoadModalOpen(o => !o)}><TrafficCone size={18} /></button>
           </nav>
