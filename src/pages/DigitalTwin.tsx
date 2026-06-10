@@ -132,6 +132,9 @@ const DigitalTwin: React.FC = () => {
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  // Set to false in map-init cleanup before map.remove() so every subsequent
+  // effect/callback can bail out instead of touching a destroyed map instance.
+  const aliveRef = useRef(true);
 
   const [styleReady, setStyleReady] = useState(false);
   const [is3D, setIs3D] = useState(true);
@@ -233,12 +236,12 @@ const DigitalTwin: React.FC = () => {
     return () => clearInterval(t);
   }, [layers.liveTraffic, fetchSegments]);
   useEffect(() => {
-    if (!styleReady) return;
-    mapRef.current?.setConfigProperty('basemap', 'lightPreset', lightPreset);
+    if (!aliveRef.current || !styleReady) return;
+    try { mapRef.current?.setConfigProperty('basemap', 'lightPreset', lightPreset); } catch {}
   }, [styleReady, lightPreset]);
   useEffect(() => {
-    if (!styleReady) return;
-    mapRef.current?.setTerrain(terrainOn ? { source: 'mapbox-dem', exaggeration: terrainExaggeration } : null);
+    if (!aliveRef.current || !styleReady) return;
+    try { mapRef.current?.setTerrain(terrainOn ? { source: 'mapbox-dem', exaggeration: terrainExaggeration } : null); } catch {}
   }, [styleReady, terrainOn, terrainExaggeration]);
   useEffect(() => {
     if (autoRefresh <= 0) return;
@@ -317,15 +320,27 @@ const DigitalTwin: React.FC = () => {
       setStyleReady(true);
     });
 
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      // Mark dead before remove() so in-flight effects skip map calls.
+      aliveRef.current = false;
+      try { map.remove(); } catch {}
+      mapRef.current = null;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const m = mapRef.current; if (!m) return;
-    m.easeTo({ pitch: is3D ? 60 : 0, bearing: is3D ? -17 : 0, duration: 600 });
+    if (!aliveRef.current || !mapRef.current) return;
+    try { mapRef.current.easeTo({ pitch: is3D ? 60 : 0, bearing: is3D ? -17 : 0, duration: 600 }); } catch {}
   }, [is3D]);
 
-  const setSrc = (id: string, data: any) => { const s = mapRef.current?.getSource(id) as mapboxgl.GeoJSONSource | undefined; if (s) s.setData(data); };
+  // Guard against calling into a destroyed map (style already undefined post-remove).
+  const setSrc = (id: string, data: any) => {
+    if (!aliveRef.current || !mapRef.current) return;
+    try {
+      const s = mapRef.current.getSource(id) as mapboxgl.GeoJSONSource | undefined;
+      if (s) s.setData(data);
+    } catch {}
+  };
 
   useEffect(() => { if (styleReady) setSrc('flood-zones-src', fc(FLOOD_ZONES.map(z => ({ type: 'Feature', properties: { name: z.name }, geometry: { type: 'Polygon', coordinates: [[...z.ring, z.ring[0]]] } })))); }, [styleReady]);
   useEffect(() => { if (styleReady) setSrc('reports-src', fc(reports.map(r => ({ type: 'Feature', properties: { id: r.id }, geometry: { type: 'Point', coordinates: [r.lng, r.lat] } })))); }, [styleReady, reports]);
@@ -379,8 +394,11 @@ const DigitalTwin: React.FC = () => {
 
   // ─── Visibility ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    const m = mapRef.current; if (!m || !styleReady) return;
-    const set = (id: string, on: boolean) => { if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
+    const m = mapRef.current;
+    if (!aliveRef.current || !m || !styleReady) return;
+    const set = (id: string, on: boolean) => {
+      try { if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); } catch {}
+    };
     set('reports-lyr', layers.reports);
     set('closed-roads-lyr', layers.closedRoads);
     set('closed-roads-pts', layers.closedRoads);

@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { MapErrorBoundary } from './components/MapErrorBoundary';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
@@ -98,7 +99,7 @@ function App() {
                 <Route path="/sla"               element={<SLA />} />
                 <Route path="/predictive"        element={<Predictive />} />
                 <Route path="/iot"               element={<IoT />} />
-                <Route path="/digital-twin"      element={<DigitalTwin />} />
+                <Route path="/digital-twin"      element={<MapErrorBoundary><DigitalTwin /></MapErrorBoundary>} />
                 <Route path="/crews"             element={<Crews />} />
                 <Route path="/staff"             element={<Navigate to="/crews" replace />} />
                 <Route path="/leaderboard"      element={<Leaderboard />} />
