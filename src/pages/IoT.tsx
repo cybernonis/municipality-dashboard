@@ -72,6 +72,16 @@ interface Gateway {
   connected_sensors?: number;
 }
 
+interface Crew {
+  id: string;
+  name: string;
+  department_id?: string;
+  specialty?: string;
+  leader_name?: string;
+  is_active?: boolean;
+  members_count?: number;
+}
+
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function sensorLat(s: any): number { return s.lat ?? s.latitude ?? HERAKLION.lat + (Math.random() - 0.5) * 0.02; }
 function sensorLng(s: any): number { return s.lng ?? s.longitude ?? HERAKLION.lng + (Math.random() - 0.5) * 0.02; }
@@ -244,8 +254,14 @@ export default function IoTPage() {
   const [routeComparison, setRouteComparison] = useState<IoTComparison | null>(null);
   // dirResults[i] = DirectionsResult for vehicle i (null = Directions call failed → fallback to straight line)
   const [dirResults, setDirResults] = useState<any[]>([]);
-  // routeBins[i] = bins assigned to vehicle i (split from full sensors)
-  const [routeBins, setRouteBins] = useState<{ lat: number; lng: number; fill_level: number }[][]>([]);
+  // routeBins[i] = bins assigned to vehicle i; sensor_id/location preserved for the assign POST
+  const [routeBins, setRouteBins] = useState<{ lat: number; lng: number; fill_level: number; sensor_id: string; location: string }[][]>([]);
+  // Crew assignment
+  const [crews, setCrews] = useState<Crew[]>([]);
+  const [selectedCrewId, setSelectedCrewId] = useState('');
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [assignToast, setAssignToast] = useState<{ show: boolean; msg: string; ok: boolean }>({ show: false, msg: '', ok: true });
   const [parkingSensors, setParkingSensors] = useState<ParkingSensor[]>([]);
   const [trafficSensors, setTrafficSensors] = useState<TrafficSensor[]>([]);
   const [floodSensors, setFloodSensors] = useState<FloodSensor[]>([]);
@@ -318,10 +334,24 @@ export default function IoTPage() {
     }
   }, []);
 
+  const fetchCrews = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/crews/`);
+      const raw = res.data;
+      const arr: Crew[] = Array.isArray(raw) ? raw : (raw.crews ?? raw.data ?? []);
+      // Prefer cleaning crews; fall back to all active crews
+      const cleaning = arr.filter(c => c.name.toLowerCase().includes('καθαρι') && (c.is_active !== false));
+      const list = cleaning.length > 0 ? cleaning : arr.filter(c => c.is_active !== false);
+      setCrews(list.length > 0 ? list : arr);
+      setSelectedCrewId((list.length > 0 ? list : arr)[0]?.id ?? '');
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'gateways') fetchGateways();
     else if (activeTab !== 'overview') fetchSensors(activeTab);
-  }, [activeTab, fetchSensors, fetchGateways]);
+    if (activeTab === 'waste') fetchCrews();
+  }, [activeTab, fetchSensors, fetchGateways, fetchCrews]);
 
   // Auto-zoom waste map after route optimization
   useEffect(() => {
@@ -462,6 +492,8 @@ export default function IoTPage() {
       const allBins = wasteData.map(s => ({
         lat: sensorLat(s), lng: sensorLng(s),
         fill_level: s.latest_reading?.fill_level_percent ?? 0,
+        sensor_id: sensorId(s),
+        location: sensorLoc(s),
       }));
       let fullBins = allBins.filter(b => b.fill_level > 70);
       if (fullBins.length < vehicleCount) fullBins = allBins.filter(b => b.fill_level > 50);
@@ -521,6 +553,33 @@ export default function IoTPage() {
       setDirResults([...results]);
     } finally {
       setOptimizing(false);
+    }
+  };
+
+  const handleAssignRoutes = async () => {
+    const crew = crews.find(c => c.id === selectedCrewId);
+    if (!crew) return;
+    setAssigning(true);
+    const bins = routeBins.flat().map(b => ({
+      sensor_id: b.sensor_id,
+      location: b.location,
+      latitude: b.lat,
+      longitude: b.lng,
+      fill_level: b.fill_level,
+    }));
+    try {
+      await axios.post(
+        `${API_URL}/waste/routes/assign`,
+        { crew_id: selectedCrewId, bins },
+        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      );
+      setAssignToast({ show: true, msg: `Ανατέθηκαν ${bins.length} στάσεις στο ${crew.name}`, ok: true });
+    } catch {
+      setAssignToast({ show: true, msg: 'Σφάλμα κατά την ανάθεση. Δοκίμασε ξανά.', ok: false });
+    } finally {
+      setAssigning(false);
+      setShowAssignModal(false);
+      setTimeout(() => setAssignToast(p => ({ ...p, show: false })), 4000);
     }
   };
 
@@ -853,7 +912,11 @@ export default function IoTPage() {
                         {routeComparison.savings_fuel_eur != null && ` | -${routeComparison.savings_fuel_eur}€`}
                       </div>
                     )}
-                    <button className="w-full py-2 border border-[#2E86AB] text-[#2E86AB] rounded-lg text-xs font-semibold hover:bg-blue-50 transition-colors flex items-center justify-center gap-1"><Send className="w-3.5 h-3.5" />Αποστολή στους Οδηγούς</button>
+                    <button
+                      onClick={() => setShowAssignModal(true)}
+                      className="w-full py-2 border border-[#2E86AB] text-[#2E86AB] rounded-lg text-xs font-semibold hover:bg-blue-50 transition-colors flex items-center justify-center gap-1">
+                      <Send className="w-3.5 h-3.5" />Αποστολή στους Οδηγούς
+                    </button>
                   </div>
                 )}
               </div>
@@ -1116,6 +1179,65 @@ export default function IoTPage() {
                 const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `flood-sensors-${new Date().toISOString().split('T')[0]}.csv`; a.click();
               }} className="border border-[#2E86AB] text-[#2E86AB] rounded-2xl p-3 text-sm font-semibold flex items-center justify-center gap-2 hover:bg-blue-50 w-full">
                 <Car className="w-4 h-4" /> Export CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ TOAST: assign result ══════════ */}
+      {assignToast.show && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 3000, padding: '10px 20px',
+          background: assignToast.ok ? '#00C853' : '#FF3D00', color: '#fff', borderRadius: 10,
+          fontWeight: 600, fontSize: 13, boxShadow: '0 4px 16px rgba(0,0,0,.3)', maxWidth: 380,
+        }}>
+          {assignToast.msg}
+        </div>
+      )}
+
+      {/* ══════════ MODAL: Ανάθεση σε Συνεργείο ══════════ */}
+      {showAssignModal && (
+        <div style={MODAL_OVERLAY} onClick={() => setShowAssignModal(false)}>
+          <div style={{ ...MODAL_BOX, maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-[#1E3A5F] text-base flex items-center gap-2">
+                <Send className="w-4 h-4 text-[#2E86AB]" />Ανάθεση Δρομολογίων
+              </h2>
+              <button onClick={() => setShowAssignModal(false)} className="text-gray-400 hover:text-gray-600 p-1"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              <Truck className="w-3.5 h-3.5 inline mr-1 text-gray-400" />
+              {routeBins.flat().length} στάσεις από {routeBins.length} δρομολόγια
+            </p>
+            <div className="mb-5">
+              <label style={LABEL_STYLE}>Συνεργείο καθαριότητας</label>
+              {crews.length === 0 ? (
+                <p className="text-xs text-gray-400 mt-1">Δεν βρέθηκαν ενεργά συνεργεία.</p>
+              ) : (
+                <select
+                  style={INPUT_STYLE}
+                  value={selectedCrewId}
+                  onChange={e => setSelectedCrewId(e.target.value)}
+                >
+                  {crews.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.specialty ? ` — ${c.specialty}` : ''}{c.members_count ? ` (${c.members_count} μέλη)` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowAssignModal(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50">Άκυρο</button>
+              <button
+                onClick={handleAssignRoutes}
+                disabled={assigning || !selectedCrewId || crews.length === 0}
+                className="px-5 py-2 bg-[#2E86AB] text-white rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+              >
+                {assigning
+                  ? <><RefreshCw className="w-4 h-4 animate-spin" />Αποστολή…</>
+                  : <><Send className="w-4 h-4" />Ανάθεση</>}
               </button>
             </div>
           </div>
