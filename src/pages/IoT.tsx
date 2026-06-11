@@ -242,6 +242,10 @@ export default function IoTPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [wasteRoutes, setWasteRoutes] = useState<WasteRoute[]>([]);
   const [routeComparison, setRouteComparison] = useState<IoTComparison | null>(null);
+  // dirResults[i] = DirectionsResult for vehicle i (null = Directions call failed → fallback to straight line)
+  const [dirResults, setDirResults] = useState<any[]>([]);
+  // routeBins[i] = bins assigned to vehicle i (split from full sensors)
+  const [routeBins, setRouteBins] = useState<{ lat: number; lng: number; fill_level: number }[][]>([]);
   const [parkingSensors, setParkingSensors] = useState<ParkingSensor[]>([]);
   const [trafficSensors, setTrafficSensors] = useState<TrafficSensor[]>([]);
   const [floodSensors, setFloodSensors] = useState<FloodSensor[]>([]);
@@ -321,17 +325,22 @@ export default function IoTPage() {
 
   // Auto-zoom waste map after route optimization
   useEffect(() => {
-    if (!wasteMapRef.current || wasteRoutes.length === 0 || !isLoaded) return;
+    if (!wasteMapRef.current || !isLoaded) return;
+    if (routeBins.length === 0 && dirResults.length === 0) return;
     const bounds = new window.google.maps.LatLngBounds();
     let hasCoords = false;
-    wasteRoutes.forEach(route => {
-      normalizeRoute(route, wasteSensors.length ? wasteSensors : MOCK_WASTE).forEach(b => {
-        bounds.extend({ lat: b.lat, lng: b.lng }); hasCoords = true;
-      });
+    // Prefer actual road paths from Directions API
+    dirResults.forEach(dir => {
+      if (!dir) return;
+      (dir.routes[0]?.overview_path ?? []).forEach((p: any) => { bounds.extend(p); hasCoords = true; });
     });
+    // Fallback: raw bin coords (Directions failed for all vehicles)
+    if (!hasCoords) {
+      routeBins.flat().forEach(b => { bounds.extend({ lat: b.lat, lng: b.lng }); hasCoords = true; });
+    }
     if (hasCoords) wasteMapRef.current.fitBounds(bounds, 50);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wasteRoutes, isLoaded]);
+  }, [dirResults, routeBins, isLoaded]);
 
   // ── Gateway CRUD ─────────────────────────────────────────────────────────────
   const openGatewayModal = () => {
@@ -446,21 +455,73 @@ export default function IoTPage() {
 
   const optimizeWasteRoutes = async () => {
     setOptimizing(true);
+    setDirResults([]);
+    setRouteBins([]);
     try {
-      const resp = await axios.post(`${API_URL}/waste/routes/optimize`, {
-        vehicles: vehicleCount, start_time: startTime, date: new Date().toISOString().split('T')[0],
-      });
-      const routes = resp.data.routes ?? resp.data ?? [];
-      setWasteRoutes(Array.isArray(routes) ? routes : []);
-      try { const cmp = await axios.get(`${API_URL}/waste/routes/comparison`); setRouteComparison(cmp.data); } catch {}
-    } catch {
-      setWasteRoutes([
-        { vehicle_id: 'ΗΡΑ-001', stops: 3, distance_km: 22, duration_minutes: 195, bins: [{ lat: 35.3387, lng: 25.1442, fill_level: 78 }, { lat: 35.342, lng: 25.138, fill_level: 45 }, { lat: 35.345, lng: 25.142, fill_level: 92 }] },
-        { vehicle_id: 'ΗΡΑ-002', stops: 2, distance_km: 18, duration_minutes: 165, bins: [{ lat: 35.3350, lng: 25.150, fill_level: 30 }, { lat: 35.344, lng: 25.146, fill_level: 60 }] },
-        { vehicle_id: 'ΗΡΑ-003', stops: 1, distance_km: 28, duration_minutes: 180, bins: [{ lat: 35.331, lng: 25.142, fill_level: 85 }] },
-      ]);
-      setRouteComparison({ savings_km_percent: 43, savings_co2_kg: 35, savings_fuel_eur: 15 });
-    } finally { setOptimizing(false); }
+      // 1. Pick full bins from actual sensor data (>70%, fall back to >50% if too few)
+      const allBins = wasteData.map(s => ({
+        lat: sensorLat(s), lng: sensorLng(s),
+        fill_level: s.latest_reading?.fill_level_percent ?? 0,
+      }));
+      let fullBins = allBins.filter(b => b.fill_level > 70);
+      if (fullBins.length < vehicleCount) fullBins = allBins.filter(b => b.fill_level > 50);
+      if (fullBins.length === 0) fullBins = allBins;
+
+      // 2. Split bins round-robin across vehicles so every vehicle gets a distinct set
+      const split: typeof fullBins[] = Array.from({ length: vehicleCount }, () => []);
+      fullBins.forEach((b, i) => split[i % vehicleCount].push(b));
+      setRouteBins(split);
+
+      // 3. Call backend for savings/comparison stats only (not for drawing routes)
+      let backendRoutes: WasteRoute[] = [];
+      try {
+        const resp = await axios.post(`${API_URL}/waste/routes/optimize`, {
+          vehicles: vehicleCount, start_time: startTime, date: new Date().toISOString().split('T')[0],
+        });
+        const raw = resp.data.routes ?? resp.data ?? [];
+        backendRoutes = Array.isArray(raw) ? raw : [];
+        try { const cmp = await axios.get(`${API_URL}/waste/routes/comparison`); setRouteComparison(cmp.data); } catch {}
+      } catch {
+        setRouteComparison({ savings_km_percent: 43, savings_co2_kg: 35, savings_fuel_eur: 15 });
+      }
+
+      // Sidebar stat cards: use split-bin stop counts, backend km/duration if available
+      setWasteRoutes(split.map((bins, i) => ({
+        vehicle_id: backendRoutes[i]?.vehicle_id ?? `ΗΡΑ-00${i + 1}`,
+        stops: bins.length,
+        distance_km: backendRoutes[i]?.distance_km ?? 0,
+        duration_minutes: backendRoutes[i]?.duration_minutes ?? 0,
+      })));
+
+      // 4. Request real road routes from Directions API — depot → bins → depot
+      if (!isLoaded || !(window as any).google?.maps) return;
+      const svc = new google.maps.DirectionsService();
+      const results: any[] = Array(vehicleCount).fill(null);
+      await Promise.all(split.map((bins, i) =>
+        new Promise<void>(resolve => {
+          if (bins.length === 0) { resolve(); return; }
+          svc.route(
+            {
+              origin: HERAKLION,
+              destination: HERAKLION,
+              waypoints: bins.map(b => ({
+                location: new google.maps.LatLng(b.lat, b.lng),
+                stopover: true,
+              })),
+              travelMode: google.maps.TravelMode.DRIVING,
+              optimizeWaypoints: true,
+            },
+            (result: any, status: any) => {
+              if (status === google.maps.DirectionsStatus.OK && result) results[i] = result;
+              resolve();
+            }
+          );
+        })
+      ));
+      setDirResults([...results]);
+    } finally {
+      setOptimizing(false);
+    }
   };
 
   const filteredWaste = wasteData.filter(s => {
@@ -804,13 +865,26 @@ export default function IoTPage() {
                     const fill = s.latest_reading?.fill_level_percent ?? 0;
                     return <Marker key={`ws-${i}`} position={{ lat: sensorLat(s), lng: sensorLng(s) }} onClick={() => setSelectedWaste(s)} icon={{ path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: getWasteColor(fill), fillOpacity: 0.9, strokeColor: '#fff', strokeWeight: 2 }} />;
                   })}
-                  {wasteRoutes.map((route, ri) => {
-                    const stops = normalizeRoute(route, wasteSensors.length ? wasteSensors : MOCK_WASTE);
-                    if (stops.length === 0) return null;
+                  {routeBins.map((bins, ri) => {
+                    if (bins.length === 0) return null;
+                    const dir = dirResults[ri] ?? null;
+                    const color = ROUTE_COLORS[ri % ROUTE_COLORS.length];
                     return (
                       <React.Fragment key={`route-${ri}`}>
-                        <GMPolyline path={stops.map(b => ({ lat: b.lat, lng: b.lng }))} options={{ strokeColor: ROUTE_COLORS[ri], strokeWeight: 4, strokeOpacity: 0.8 }} />
-                        {stops.map((b, bi) => <Marker key={`rb-${ri}-${bi}`} position={{ lat: b.lat, lng: b.lng }} icon={{ path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: ROUTE_COLORS[ri], fillOpacity: 0.85, strokeColor: '#fff', strokeWeight: 2 }} />)}
+                        {/* Real road path if Directions succeeded, straight fallback otherwise */}
+                        <GMPolyline
+                          path={dir ? (dir.routes[0]?.overview_path ?? []) : bins.map(b => ({ lat: b.lat, lng: b.lng }))}
+                          options={{ strokeColor: color, strokeWeight: 4, strokeOpacity: dir ? 0.85 : 0.5 }}
+                        />
+                        {/* Numbered bin markers — one per stop */}
+                        {bins.map((b, bi) => (
+                          <Marker
+                            key={`rb-${ri}-${bi}`}
+                            position={{ lat: b.lat, lng: b.lng }}
+                            label={{ text: String(bi + 1), color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
+                            icon={{ path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }}
+                          />
+                        ))}
                       </React.Fragment>
                     );
                   })}
