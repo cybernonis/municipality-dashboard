@@ -23,9 +23,11 @@ const NEIGHBORHOODS = ['Κέντρο', 'Λιμάνι', 'Αμμουδάρα', 'Κ
 type IoTTab = 'overview' | 'gateways' | 'waste' | 'parking' | 'traffic' | 'flood';
 
 interface WasteSensor {
-  id?: string; sensor_id?: string; location?: string; name?: string;
+  id?: string; sensor_id?: string; location?: string; name?: string; neighborhood?: string;
+  type?: string; subtype?: string;
   lat?: number; latitude?: number; lng?: number; longitude?: number;
   latest_reading?: { fill_level_percent?: number; temperature_celsius?: number; battery_percent?: number; };
+  metadata?: { fill_percent?: number; battery?: number; alert?: boolean; capacity_liters?: number; };
   status?: string; gateway_id?: string; gateway_name?: string;
 }
 interface ParkingSensor {
@@ -86,7 +88,8 @@ interface Crew {
 function sensorLat(s: any): number { return s.lat ?? s.latitude ?? HERAKLION.lat + (Math.random() - 0.5) * 0.02; }
 function sensorLng(s: any): number { return s.lng ?? s.longitude ?? HERAKLION.lng + (Math.random() - 0.5) * 0.02; }
 function sensorId(s: any): string { return s.sensor_id ?? s.id ?? '—'; }
-function sensorLoc(s: any): string { return s.location ?? s.name ?? '—'; }
+function sensorLoc(s: any): string { return s.location ?? s.name ?? s.neighborhood ?? s.sensor_id ?? '—'; }
+function wasteFill(s: WasteSensor): number { return s.latest_reading?.fill_level_percent ?? s.metadata?.fill_percent ?? 0; }
 function getWasteColor(fill: number) { return fill > 80 ? '#FF3D00' : fill > 50 ? '#FFA500' : '#00C853'; }
 function getParkingColor(occupied: boolean) { return occupied ? '#FF3D00' : '#00C853'; }
 function getTrafficColor(cong: number) { return cong > 70 ? '#FF3D00' : cong > 40 ? '#FFA500' : '#00C853'; }
@@ -122,9 +125,9 @@ function normalizeRoute(route: any, fallback: WasteSensor[]): { lat: number; lng
     if (parsed.length > 0) return parsed;
   }
   return fallback
-    .filter(s => (s.latest_reading?.fill_level_percent ?? 0) > 50)
+    .filter(s => wasteFill(s) > 50)
     .slice(0, 8)
-    .map(s => ({ lat: sensorLat(s), lng: sensorLng(s), fill_level: s.latest_reading?.fill_level_percent ?? 50 }));
+    .map(s => ({ lat: sensorLat(s), lng: sensorLng(s), fill_level: wasteFill(s) }));
 }
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
@@ -313,7 +316,10 @@ export default function IoTPage() {
       const res = await axios.get(`${API_URL}/iot/sensors?type=${typeMap[type]}`);
       const raw = res.data;
       const arr = Array.isArray(raw) ? raw : (raw.sensors ?? raw.data ?? []);
-      if (type === 'waste') setWasteSensors(arr.length ? arr : MOCK_WASTE);
+      if (type === 'waste') {
+        const wasteBins = arr.filter((s: any) => !s.type || s.type === 'waste_bin' || s.type === 'smart_waste_bin');
+        setWasteSensors(wasteBins.length ? wasteBins : arr.length ? arr : MOCK_WASTE);
+      }
       if (type === 'parking') setParkingSensors(arr.length ? arr : MOCK_PARKING);
       if (type === 'traffic') setTrafficSensors(arr.length ? arr : MOCK_TRAFFIC);
       if (type === 'flood') {
@@ -453,8 +459,8 @@ export default function IoTPage() {
   const overviewStats = {
     waste: {
       total: wasteData.length,
-      critical: wasteData.filter(s => (s.latest_reading?.fill_level_percent ?? 0) > 80).length,
-      avgFill: Math.round(wasteData.reduce((a, s) => a + (s.latest_reading?.fill_level_percent ?? 0), 0) / (wasteData.length || 1)),
+      critical: wasteData.filter(s => wasteFill(s) > 80).length,
+      avgFill: Math.round(wasteData.reduce((a, s) => a + wasteFill(s), 0) / (wasteData.length || 1)),
     },
     parking: {
       total: parkingData.length,
@@ -489,9 +495,12 @@ export default function IoTPage() {
     setRouteBins([]);
     try {
       // 1. Pick full bins from actual sensor data (>70%, fall back to >50% if too few)
-      const allBins = wasteData.map(s => ({
+      const wasteBinsOnly = wasteData.filter(s =>
+        !s.type || s.type === 'waste_bin' || s.type === 'smart_waste_bin'
+      );
+      const allBins = wasteBinsOnly.map(s => ({
         lat: sensorLat(s), lng: sensorLng(s),
-        fill_level: s.latest_reading?.fill_level_percent ?? 0,
+        fill_level: wasteFill(s),
         sensor_id: sensorId(s),
         location: sensorLoc(s),
       }));
@@ -584,12 +593,12 @@ export default function IoTPage() {
   };
 
   const filteredWaste = wasteData.filter(s => {
-    const fill = s.latest_reading?.fill_level_percent ?? 0;
+    const fill = wasteFill(s);
     if (wasteFilter === 'critical') return fill > 80;
     if (wasteFilter === 'warning') return fill >= 50 && fill <= 80;
     if (wasteFilter === 'ok') return fill < 50;
     return true;
-  }).sort((a, b) => (b.latest_reading?.fill_level_percent ?? 0) - (a.latest_reading?.fill_level_percent ?? 0));
+  }).sort((a, b) => wasteFill(b) - wasteFill(a));
 
   const maxFloodLevel = Math.max(...floodData.map(s => s.latest_reading?.water_level_cm ?? 0), 0);
   const onlineGateways = gatewayData.filter(g => g.status === 'online');
@@ -856,8 +865,9 @@ export default function IoTPage() {
               <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: 340 }}>
                 {loading ? <Spinner /> : filteredWaste.length === 0 ? <EmptyState icon={<Trash2 className="w-10 h-10 text-gray-300" />} message="Δεν βρέθηκαν κάδοι" /> :
                   filteredWaste.map((s, i) => {
-                    const fill = s.latest_reading?.fill_level_percent ?? 0;
+                    const fill = wasteFill(s);
                     const color = getWasteColor(fill);
+                    const battery = s.latest_reading?.battery_percent ?? s.metadata?.battery;
                     return (
                       <div key={i} className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm" style={{ borderLeft: `4px solid ${color}` }}>
                         <div className="flex justify-between items-start">
@@ -870,7 +880,7 @@ export default function IoTPage() {
                         <ProgressBar value={fill} color={color} />
                         <div className="flex gap-3 mt-2 text-xs text-gray-400">
                           {s.latest_reading?.temperature_celsius != null && <span className="flex items-center gap-1"><Thermometer className="w-3 h-3" />{s.latest_reading.temperature_celsius}°C</span>}
-                          {s.latest_reading?.battery_percent != null && <span className="flex items-center gap-1"><Battery className="w-3 h-3" />{s.latest_reading.battery_percent}%</span>}
+                          {battery != null && <span className="flex items-center gap-1"><Battery className="w-3 h-3" />{battery}%</span>}
                           {s.gateway_name && <span className="flex items-center gap-1" title={s.gateway_id}><Building2 className="w-3 h-3" />{s.gateway_name}</span>}
                         </div>
                       </div>
@@ -925,7 +935,7 @@ export default function IoTPage() {
               {!isLoaded ? <MapLoading /> : (
                 <GoogleMap mapContainerStyle={{ width: '100%', height: '100%', minHeight: 500 }} center={HERAKLION} zoom={14} options={MAP_OPTS} onLoad={map => { wasteMapRef.current = map; }}>
                   {filteredWaste.map((s, i) => {
-                    const fill = s.latest_reading?.fill_level_percent ?? 0;
+                    const fill = wasteFill(s);
                     return <Marker key={`ws-${i}`} position={{ lat: sensorLat(s), lng: sensorLng(s) }} onClick={() => setSelectedWaste(s)} icon={{ path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: getWasteColor(fill), fillOpacity: 0.9, strokeColor: '#fff', strokeWeight: 2 }} />;
                   })}
                   {routeBins.map((bins, ri) => {
@@ -956,7 +966,7 @@ export default function IoTPage() {
                       <div style={{ fontSize: 13, lineHeight: 1.5 }}>
                         <b>{sensorId(selectedWaste)}</b><br />
                         <MapPin size={11} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 3 }} />{sensorLoc(selectedWaste)}<br />
-                        Γέμισμα: <b>{selectedWaste.latest_reading?.fill_level_percent ?? 0}%</b>
+                        Γέμισμα: <b>{wasteFill(selectedWaste)}%</b>
                         {selectedWaste.gateway_name && <><br /><Building2 size={11} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 3 }} />{selectedWaste.gateway_name}</>}
                       </div>
                     </InfoWindow>
